@@ -1,15 +1,24 @@
 #![no_std]
 #![no_main]
 
+mod ble;
+
+use cyw43::{bluetooth::BtDriver, ScanOptions};
+use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
+use defmt::unwrap;
 use embassy_executor::Spawner;
 use embassy_rp::{
-    binary_info::{rp_cargo_version, rp_program_build_attribute, rp_program_name, EntryAddr},
+    binary_info::{EntryAddr, rp_cargo_version, rp_program_build_attribute, rp_program_name},
     bind_interrupts,
     gpio::{Level, Output},
-    peripherals::PIO0,
-    pio::{self, Pio}, spi::Spi,
+    peripherals::{DMA_CH0, PIO0},
+    pio::{self, Pio},
 };
-use embassy_time::{Duration, Timer};
+use embassy_time::Timer;
+use static_cell::StaticCell;
+use trouble_host::prelude::ExternalController;
+use crate::ble::peripheral;
+
 use {defmt_rtt as _, panic_probe as _};
 
 #[used]
@@ -24,14 +33,22 @@ bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => pio::InterruptHandler<PIO0>;
 });
 
+#[embassy_executor::task]
+async fn cyw43_task(
+    runner: cyw43::Runner<'static, Output<'static>, PioSpi<'static, PIO0, 0, DMA_CH0>>,
+) {
+    runner.run().await
+}
+
 #[embassy_executor::main]
-async fn main(_spawner: Spawner) -> ! {
+async fn main(spawner: Spawner) -> ! {
     let p = embassy_rp::init(Default::default());
 
     defmt::info!("Hello, World!");
 
     let fw = include_bytes!("../cyw43-firmware/43439A0.bin");
     let btfw = include_bytes!("../cyw43-firmware/43439A0_btfw.bin");
+    // "Country Locale Matrix"
     let clm = include_bytes!("../cyw43-firmware/43439A0_clm.bin");
 
     // TODO: To make flashing faster for development, you may want to flash the firmwares independently
@@ -46,6 +63,44 @@ async fn main(_spawner: Spawner) -> ! {
     // OP wireless SPI CS - when high also enables GPIO29 ADC pin to read VSYS
     let cs = Output::new(p.PIN_25, Level::Low);
     let mut pio0 = Pio::new(p.PIO0, Irqs);
+    let spi = PioSpi::new(
+        &mut pio0.common,
+        pio0.sm0,
+        RM2_CLOCK_DIVIDER,
+        pio0.irq0,
+        cs,
+        p.PIN_24, // OP/IP wireless SPI data/IRQ
+        p.PIN_29, // OP/IP wireless SPI CLK/ADC mode (ADC3) to measure VSYS/3
+        p.DMA_CH0,
+    );
+
+    static STATE: StaticCell<cyw43::State> = StaticCell::new();
+    let state = STATE.init(cyw43::State::new());
+
+    let (_net_dev, bt_dev, mut control, runner) =
+        cyw43::new_with_bluetooth(state, pwr, spi, fw, btfw).await;
+    unwrap!(spawner.spawn(cyw43_task(runner)));
+    control.init(clm).await;
+
+    {
+        let mut scanner = control.scan(ScanOptions::default()).await;
+
+        while let Some(scan) = scanner.next().await {
+            let ssid = str::from_utf8(&scan.ssid).unwrap_or("???");
+            defmt::info!(
+                "found wifi: `{}`, strength {}dbM, channel {}",
+                ssid,
+                scan.rssi,
+                scan.ctl_ch
+            )
+        }
+    }
+
+    // control.join("SSID", JoinOptions::new(b"PASSWORD")).await;
+
+    let bt_control: ExternalController<BtDriver, 10> = ExternalController::new(bt_dev);
+    let address = control.address().await;
+    peripheral(bt_control, address);
 
     loop {
         Timer::after_secs(1).await
