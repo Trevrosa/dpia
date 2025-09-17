@@ -1,0 +1,3 @@
+[submodule "trouble"]
+	path = trouble
+	url = https://github.com/trevrosa/trouble
