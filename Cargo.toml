@@ -33,6 +33,7 @@ trouble-host = { path = "trouble/host", features = ["peripheral", "gatt", "deriv
 cyw43 = { version = "0.5.0", features = ["defmt", "bluetooth"] }
 cyw43-pio = { version = "0.8.0", features = ["defmt"] }
 static_cell = "2.1.1"
+embassy-futures = { version = "0.1.2", features = ["defmt"] }
 
 [profile.release]
 debug = 2
