@@ -15,8 +15,6 @@ const MAX_CONNECTIONS: usize = 2;
 
 const MAX_L2CAP_CHANNELS: usize = 2;
 
-pub fn peripheral(controller: impl Controller, address: [u8; 6]) {
-    let mut resources: HostResources<DefaultPacketPool, MAX_CONNECTIONS, MAX_L2CAP_CHANNELS> =
 #[gatt_server]
 struct Server {
     temp_service: TemperatureService,
@@ -29,7 +27,7 @@ struct TemperatureService {
 }
 
 pub async fn peripheral(controller: impl Controller, address: [u8; 6]) {
-    let mut resources: HostResources<DefaultPacketPool, MAX_CONNECTIONS, L2CAP_CHANNELS_MAX> =
+    let mut resources: HostResources<DefaultPacketPool, MAX_CONNECTIONS, MAX_L2CAP_CHANNELS> =
         HostResources::new();
     let stack = trouble_host::new(controller, &mut resources);
     let Host {
