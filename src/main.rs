@@ -51,6 +51,8 @@ async fn main(spawner: Spawner) -> ! {
     // "Country Locale Matrix"
     let clm = include_bytes!("../cyw43-firmware/43439A0_clm.bin");
 
+    defmt::info!("fw={} btfw={} clm={}", fw.len(), btfw.len(), clm.len());
+
     // TODO: To make flashing faster for development, you may want to flash the firmwares independently
     // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
     //     probe-rs download ../../cyw43-firmware/43439A0.bin --binary-format bin --chip RP235x --base-address 0x10100000
@@ -74,6 +76,8 @@ async fn main(spawner: Spawner) -> ! {
         p.DMA_CH0,
     );
 
+    defmt::debug!("pio and pins set up");
+
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init(cyw43::State::new());
 
@@ -81,6 +85,9 @@ async fn main(spawner: Spawner) -> ! {
         cyw43::new_with_bluetooth(state, pwr, spi, fw, btfw).await;
     unwrap!(spawner.spawn(cyw43_task(runner)));
     control.init(clm).await;
+
+    defmt::debug!("cyw43 set up");
+    defmt::info!("scanning for wifi now");
 
     {
         let mut scanner = control.scan(ScanOptions::default()).await;
@@ -98,11 +105,13 @@ async fn main(spawner: Spawner) -> ! {
 
     // control.join("SSID", JoinOptions::new(b"PASSWORD")).await;
 
+    defmt::info!("starting bluetooth controller");
     let bt_control: ExternalController<BtDriver, 10> = ExternalController::new(bt_dev);
     let address = control.address().await;
-    peripheral(bt_control, address);
+    peripheral(bt_control, address).await;
 
     loop {
+        defmt::info!("finished");
         Timer::after_secs(1).await
     }
 }
