@@ -3,13 +3,15 @@
 
 mod ble;
 
-use cyw43::{bluetooth::BtDriver, ScanOptions};
+use crate::ble::peripheral;
+use cyw43::{ScanOptions, bluetooth::BtDriver};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use defmt::unwrap;
 use embassy_executor::Spawner;
 use embassy_rp::{
     binary_info::{EntryAddr, rp_cargo_version, rp_program_build_attribute, rp_program_name},
     bind_interrupts,
+    config::Config,
     gpio::{Level, Output},
     peripherals::{DMA_CH0, PIO0},
     pio::{self, Pio},
@@ -17,7 +19,6 @@ use embassy_rp::{
 use embassy_time::Timer;
 use static_cell::StaticCell;
 use trouble_host::prelude::ExternalController;
-use crate::ble::peripheral;
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -37,12 +38,12 @@ bind_interrupts!(struct Irqs {
 async fn cyw43_task(
     runner: cyw43::Runner<'static, Output<'static>, PioSpi<'static, PIO0, 0, DMA_CH0>>,
 ) {
-    runner.run().await
+    runner.run().await;
 }
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) -> ! {
-    let p = embassy_rp::init(Default::default());
+    let p = embassy_rp::init(Config::default());
 
     defmt::info!("Hello, World!");
 
@@ -99,7 +100,7 @@ async fn main(spawner: Spawner) -> ! {
                 ssid,
                 scan.rssi,
                 scan.ctl_ch
-            )
+            );
         }
     }
 
@@ -112,6 +113,6 @@ async fn main(spawner: Spawner) -> ! {
 
     loop {
         defmt::info!("finished");
-        Timer::after_secs(1).await
+        Timer::after_secs(1).await;
     }
 }
