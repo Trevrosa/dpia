@@ -2,8 +2,8 @@
 #![no_main]
 
 mod ble;
+mod sensiron;
 
-use crate::ble::peripheral;
 use cyw43::{ScanOptions, bluetooth::BtDriver};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use defmt::unwrap;
@@ -13,7 +13,8 @@ use embassy_rp::{
     bind_interrupts,
     config::Config,
     gpio::{Level, Output},
-    peripherals::{DMA_CH0, PIO0},
+    i2c,
+    peripherals::{DMA_CH0, I2C0, I2C1, PIO0},
     pio::{self, Pio},
 };
 use embassy_time::Timer;
@@ -21,6 +22,12 @@ use static_cell::StaticCell;
 use trouble_host::prelude::ExternalController;
 
 use {defmt_rtt as _, panic_probe as _};
+
+use crate::ble::peripheral;
+use crate::sensiron::{
+    sht4x::{Sht4x, model_addrs::SHT40_AD1B},
+    sts4x::{Sts4x, model_addrs::STS40_AD1B},
+};
 
 #[used]
 #[unsafe(link_section = ".bi_entries")]
@@ -32,6 +39,8 @@ pub static PICOTOOL_ENTRIES: [EntryAddr; 3] = [
 
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => pio::InterruptHandler<PIO0>;
+    I2C0_IRQ => i2c::InterruptHandler<I2C0>;
+    I2C1_IRQ => i2c::InterruptHandler<I2C1>;
 });
 
 #[embassy_executor::task]
@@ -110,6 +119,23 @@ async fn main(spawner: Spawner) -> ! {
     let bt_control: ExternalController<BtDriver, 10> = ExternalController::new(bt_dev);
     let address = control.address().await;
     peripheral(bt_control, address).await;
+
+    let humidity = Sht4x::new(
+        p.I2C0,
+        p.PIN_1,
+        p.PIN_0,
+        Irqs,
+        i2c::Config::default(),
+        SHT40_AD1B,
+    );
+    let temp = Sts4x::new(
+        p.I2C1,
+        p.PIN_11,
+        p.PIN_10,
+        Irqs,
+        i2c::Config::default(),
+        STS40_AD1B,
+    );
 
     loop {
         defmt::info!("finished");
