@@ -10,6 +10,9 @@ name = "dpia"
 test = false
 bench = false
 
+[lib]
+test = false
+
 [dependencies]
 defmt = "1.0"
 defmt-rtt = "1.0"

@@ -2,11 +2,14 @@
 #![no_main]
 
 mod ble;
-mod sensiron;
 
 use cyw43::{ScanOptions, bluetooth::BtDriver};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use defmt::unwrap;
+use dpia::sensiron::{
+    sht4x::{Sht4x, model_addrs::SHT40_AD1B},
+    sts4x::{Sts4x, model_addrs::STS40_AD1B},
+};
 use embassy_executor::Spawner;
 use embassy_rp::{
     binary_info::{EntryAddr, rp_cargo_version, rp_program_build_attribute, rp_program_name},
@@ -24,10 +27,6 @@ use trouble_host::prelude::ExternalController;
 use {defmt_rtt as _, panic_probe as _};
 
 use crate::ble::peripheral;
-use crate::sensiron::{
-    sht4x::{Sht4x, model_addrs::SHT40_AD1B},
-    sts4x::{Sts4x, model_addrs::STS40_AD1B},
-};
 
 #[used]
 #[unsafe(link_section = ".bi_entries")]
