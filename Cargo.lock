@@ -208,6 +208,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crc"
+version = "3.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9710d3b3739c2e349eb44fe848ad0b7c8cb1e42bd87ee49371df2f7acaf3e675"
+dependencies = [
+ "crc-catalog",
+]
+
+[[package]]
 name = "crc-any"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -215,6 +224,12 @@ checksum = "a62ec9ff5f7965e4d7280bd5482acd20aadb50d632cf6c1d74493856b011fa73"
 dependencies = [
  "debug-helper",
 ]
+
+[[package]]
+name = "crc-catalog"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19d374276b40fb8bbdee95aef7c7fa6b5316ec764510eb64b8dd0e2ed0d7e7f5"
 
 [[package]]
 name = "critical-section"
@@ -386,12 +401,15 @@ dependencies = [
 name = "dpia"
 version = "0.1.0"
 dependencies = [
+ "byteorder",
  "cortex-m",
  "cortex-m-rt",
+ "crc",
  "cyw43",
  "cyw43-pio",
  "defmt 1.0.1",
  "defmt-rtt",
+ "dpia-lib",
  "embassy-executor",
  "embassy-futures",
  "embassy-net",
@@ -406,6 +424,13 @@ dependencies = [
  "panic-probe",
  "static_cell",
  "trouble-host",
+]
+
+[[package]]
+name = "dpia-lib"
+version = "0.1.0"
+dependencies = [
+ "crc",
 ]
 
 [[package]]
@@ -967,9 +992,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.175"
+version = "0.2.176"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a82ae493e598baaea5209805c49bbf2ea7de956d50d7da0da1164f9c6d28543"
+checksum = "58f929b4d672ea937a23a1ab494143d968337a5f47e56d0815df1e0890ddf174"
 
 [[package]]
 name = "litrs"
@@ -1518,6 +1543,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "testing"
+version = "0.1.0"
+dependencies = [
+ "crc",
+ "dpia-lib",
 ]
 
 [[package]]
