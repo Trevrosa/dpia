@@ -9,6 +9,9 @@ debug = 2
 lto = true
 opt-level = 'z'
 
+[profile.release.package."*"]
+opt-level = 3
+
 [profile.dev]
 debug = 2
 lto = true

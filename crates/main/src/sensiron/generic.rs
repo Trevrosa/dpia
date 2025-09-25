@@ -1,5 +1,7 @@
 //! a generic sensiron sensor. works for `SHT4x` and `STS4x`.
 
+use crc::Crc;
+use dpia_lib::CRC_8_SENSIRON;
 use embassy_rp::Peri;
 use embassy_rp::i2c::{self, Async, Config, I2c, Instance, InterruptHandler, SclPin, SdaPin};
 use embassy_rp::interrupt::typelevel::Binding;
@@ -53,9 +55,45 @@ impl<'d, I: Instance> Sensor<'d, I> {
     /// # Errors
     /// 
     /// Will error if there is an I2c error. 
-    pub async fn serial_num(&mut self) -> Result<[u8; 6]> {
+    pub async fn serial_num(&mut self) -> Result<[u8; 4]> {
         const READ_SERIAL_NUMBER: u8 = 0x89;
-        self.run_cmd(READ_SERIAL_NUMBER).await
+        let data = self.run_cmd(READ_SERIAL_NUMBER).await?;
+
+        let serial = &data[..=2];
+        let sum = data[3];
+        let serial1 = &data[4..=5];
+        let sum1 = data[6];
+
+        let crc = Crc::<u8>::new(&CRC_8_SENSIRON);
+        let calc_sum = crc.checksum(serial);
+        let calc_sum1 = crc.checksum(serial1);
+
+        if sum != calc_sum {
+            defmt::warn!(
+                "serial checksum did not match (ours: {:#x} != sensor's: {:#x})",
+                calc_sum,
+                sum
+            );
+        }
+        if sum1 != calc_sum1 {
+            defmt::warn!(
+                "serial1 checksum did not match (ours: {:#x} != sensor's: {:#x})",
+                calc_sum1,
+                sum1
+            );
+        }
+
+        let mut combined = [0; 4];
+
+        for (i, byte) in serial.iter().enumerate() {
+            combined[i] = *byte;
+        }
+        for (i, byte) in serial.iter().enumerate() {
+            combined[2 + i] = *byte;
+        }
+
+        // TODO: should we return a str instead?
+        Ok(combined)
     }
 
     /// # Errors
