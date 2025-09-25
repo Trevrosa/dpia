@@ -4,11 +4,11 @@ pub mod model_addrs;
 
 use byteorder::{ByteOrder, LittleEndian};
 use crc::Crc;
-use dpia_lib::CRC_8_SENSIRON;
+use dpia_lib::{CRC_8_SENSIRON, signal_to_rh, signal_to_temp};
 
 use crate::{
     make_sensor,
-    sensiron::{generic::{Precision, Result}, sts4x::signal_to_temp},
+    sensiron::generic::{Precision, Result},
 };
 
 // TODO: parse the raw returned data from commands
@@ -20,23 +20,18 @@ pub struct Measurement {
     temperature: i32,
 }
 
-// FIXME: is this correct?
-pub fn signal_to_rh(data: u16) -> u16 {
-    119 * (data / u16::MAX)
-}
-
 make_sensor!(Sht4x, "the `SHT4x` temperature-and-humidty sensor");
 
 impl<I: Instance> Sht4x<'_, I> {
-    /// Returns the relative humidity as a % and temperature in degrees celsius. 
+    /// Returns the relative humidity as a % and temperature in degrees celsius.
     pub async fn measure(&mut self, precision: Precision) -> Result<Measurement> {
         let data = self.0.measure(precision).await?;
 
         // datasheet section 4.5
-        let temp = &data[..=2];
-        let t_sum = data[3];
-        let humidity = &data[4..=5];
-        let h_sum = data[6];
+        let temp = &data[0..=1];
+        let t_sum = data[2];
+        let humidity = &data[3..=4];
+        let h_sum = data[5];
 
         let crc = Crc::<u8>::new(&CRC_8_SENSIRON);
         let t_calc_sum = crc.checksum(temp);

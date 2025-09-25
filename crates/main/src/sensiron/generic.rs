@@ -45,24 +45,24 @@ impl<'d, I: Instance> Sensor<'d, I> {
     }
 
     /// # Errors
-    /// 
-    /// Will error if there is an I2c error. 
+    ///
+    /// Will error if there is an I2c error.
     pub async fn measure(&mut self, precision: Precision) -> Result<[u8; 6]> {
         let cmd = precision.cmd();
         self.run_cmd(cmd).await
     }
 
     /// # Errors
-    /// 
-    /// Will error if there is an I2c error. 
+    ///
+    /// Will error if there is an I2c error.
     pub async fn serial_num(&mut self) -> Result<[u8; 4]> {
         const READ_SERIAL_NUMBER: u8 = 0x89;
         let data = self.run_cmd(READ_SERIAL_NUMBER).await?;
 
-        let serial = &data[..=2];
-        let sum = data[3];
-        let serial1 = &data[4..=5];
-        let sum1 = data[6];
+        let serial = &data[0..=1];
+        let sum = data[2];
+        let serial1 = &data[3..=4];
+        let sum1 = data[5];
 
         let crc = Crc::<u8>::new(&CRC_8_SENSIRON);
         let calc_sum = crc.checksum(serial);
@@ -97,8 +97,8 @@ impl<'d, I: Instance> Sensor<'d, I> {
     }
 
     /// # Errors
-    /// 
-    /// Will error if there is an I2c error. 
+    ///
+    /// Will error if there is an I2c error.
     pub async fn soft_reset(&mut self) -> Result<()> {
         const SOFT_RESET: u8 = 0x94;
         // special command, only ACKs, so no return data

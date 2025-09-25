@@ -4,7 +4,7 @@ pub mod model_addrs;
 
 use byteorder::{ByteOrder, LittleEndian};
 use crc::Crc;
-use dpia_lib::CRC_8_SENSIRON;
+use dpia_lib::{CRC_8_SENSIRON, signal_to_temp};
 
 use crate::{
     make_sensor,
@@ -12,11 +12,6 @@ use crate::{
 };
 
 // TODO: parse the raw returned data from commands
-
-// FIXME: is this correct?
-pub fn signal_to_temp(data: u16) -> i32 {
-    130 * (i32::from(data) / i32::from(u16::MAX))
-}
 
 make_sensor!(Sts4x, "the `STS4x` temperature sensor");
 
@@ -26,8 +21,8 @@ impl<I: Instance> Sts4x<'_, I> {
         let data = self.0.measure(precision).await?;
 
         // datasheet section 4.4
-        let temp = &data[..=2];
-        let sum = data[3];
+        let temp = &data[0..=1];
+        let sum = data[2];
 
         let crc = Crc::<u8>::new(&CRC_8_SENSIRON);
         let calc_sum = crc.checksum(temp);

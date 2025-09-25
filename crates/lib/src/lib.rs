@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 
 use crc::Algorithm;
 
@@ -15,6 +15,16 @@ pub const CRC_8_SENSIRON: Algorithm<u8> = Algorithm {
     residue: 0x00, // not specified
 };
 
+// FIXME: is this correct?
+pub fn signal_to_rh(data: u16) -> u16 {
+    119 * (data / u16::MAX)
+}
+
+// FIXME: is this correct?
+pub fn signal_to_temp(data: u16) -> i32 {
+    130 * (i32::from(data) / i32::from(u16::MAX))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -25,5 +35,12 @@ mod tests {
         let sum = crc.checksum(&[0xBE, 0xEF]);
 
         assert_eq!(sum, 0x92);
+    }
+
+    #[test]
+    fn signal() {
+        let rh = signal_to_rh(0xBEEF);
+
+        assert_ne!(rh, 0);
     }
 }
