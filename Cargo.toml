@@ -5,14 +5,15 @@ members = ["crates/lib", "crates/main"]
 exclude = ["dep"]
 
 [profile.release]
-debug = 2
-lto = true
-opt-level = 'z'
+opt-level = "z"
+lto = "fat"
+debug = "full"
+codegen-units = 1
 
 [profile.release.package."*"]
 opt-level = 3
 
 [profile.dev]
-debug = 2
-lto = true
 opt-level = "z"
+lto = "fat"
+debug = "full"
