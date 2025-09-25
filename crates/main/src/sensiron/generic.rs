@@ -1,7 +1,7 @@
 //! a generic sensiron sensor. works for `SHT4x` and `STS4x`.
 
 use crc::Crc;
-use dpia_lib::CRC_8_SENSIRON;
+use dpia_lib::{CRC_8_SENSIRON, concat_bytes};
 use embassy_rp::Peri;
 use embassy_rp::i2c::{self, Async, Config, I2c, Instance, InterruptHandler, SclPin, SdaPin};
 use embassy_rp::interrupt::typelevel::Binding;
@@ -83,14 +83,7 @@ impl<'d, I: Instance> Sensor<'d, I> {
             );
         }
 
-        let mut combined = [0; 4];
-
-        for (i, byte) in serial.iter().enumerate() {
-            combined[i] = *byte;
-        }
-        for (i, byte) in serial.iter().enumerate() {
-            combined[2 + i] = *byte;
-        }
+        let combined = concat_bytes!(serial, serial1, 4);
 
         // TODO: should we return a str instead?
         Ok(combined)

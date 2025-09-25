@@ -15,6 +15,21 @@ pub const CRC_8_SENSIRON: Algorithm<u8> = Algorithm {
     residue: 0x00, // not specified
 };
 
+/// Takes two slices and the combined length of the slices. Creates a new slice `[T; combined_len]`.
+#[macro_export]
+macro_rules! concat_bytes {
+    ($slice:expr, $slice1:expr, $combined_len:expr) => {{
+        let mut combined = [0; $combined_len];
+        for (i, byte) in $slice.iter().enumerate() {
+            combined[i] = *byte;
+        }
+        for (i, byte) in $slice1.iter().enumerate() {
+            combined[($combined_len / 2) + i] = *byte;
+        }
+        combined
+    }};
+}
+
 // FIXME: is this correct?
 pub fn signal_to_rh(data: u16) -> u16 {
     119 * (data / u16::MAX)

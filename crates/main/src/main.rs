@@ -39,8 +39,8 @@ pub static PICOTOOL_ENTRIES: [EntryAddr; 3] = [
 
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => pio::InterruptHandler<PIO0>;
-    I2C0_IRQ => i2c::InterruptHandler<I2C0>;
-    I2C1_IRQ => i2c::InterruptHandler<I2C1>;
+    I2C0_IRQ   => i2c::InterruptHandler<I2C0>;
+    I2C1_IRQ   => i2c::InterruptHandler<I2C1>;
 });
 
 #[embassy_executor::task]
