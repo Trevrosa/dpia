@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn concat_bytes_panic() {
+    fn concat_bytes_wrong_len() {
         concat_bytes!([1], [2], 0);
     }
 
