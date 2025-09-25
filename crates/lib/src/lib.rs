@@ -14,3 +14,16 @@ pub const CRC_8_SENSIRON: Algorithm<u8> = Algorithm {
     check: 0x00,   // not specified
     residue: 0x00, // not specified
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn crc() {
+        let crc = crc::Crc::<u8>::new(&CRC_8_SENSIRON);
+        let sum = crc.checksum(&[0xBE, 0xEF]);
+
+        assert_eq!(sum, 0x92);
+    }
+}
