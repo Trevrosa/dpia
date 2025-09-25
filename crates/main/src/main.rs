@@ -120,6 +120,7 @@ async fn main(spawner: Spawner) -> ! {
     let address = control.address().await;
     peripheral(bt_control, address).await;
 
+    // TODO: do we need two i2c buses?
     let humidity = Sht4x::new(
         p.I2C0,
         p.PIN_1,

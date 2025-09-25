@@ -2,8 +2,71 @@
 
 pub mod model_addrs;
 
-use crate::make_sensor;
+use byteorder::{ByteOrder, LittleEndian};
+use crc::Crc;
+use dpia_lib::CRC_8_SENSIRON;
+
+use crate::{
+    make_sensor,
+    sensiron::{generic::{Precision, Result}, sts4x::signal_to_temp},
+};
 
 // TODO: parse the raw returned data from commands
 
+#[derive(defmt::Format)]
+pub struct Measurement {
+    relative_humidity: u16,
+    /// in degrees celsius.
+    temperature: i32,
+}
+
+// FIXME: is this correct?
+pub fn signal_to_rh(data: u16) -> u16 {
+    119 * (data / u16::MAX)
+}
+
 make_sensor!(Sht4x, "the `SHT4x` temperature-and-humidty sensor");
+
+impl<I: Instance> Sht4x<'_, I> {
+    /// Returns the relative humidity as a % and temperature in degrees celsius. 
+    pub async fn measure(&mut self, precision: Precision) -> Result<Measurement> {
+        let data = self.0.measure(precision).await?;
+
+        // datasheet section 4.5
+        let temp = &data[..=2];
+        let t_sum = data[3];
+        let humidity = &data[4..=5];
+        let h_sum = data[6];
+
+        let crc = Crc::<u8>::new(&CRC_8_SENSIRON);
+        let t_calc_sum = crc.checksum(temp);
+        let h_calc_sum = crc.checksum(humidity);
+
+        // FIXME: should we return an error instead?
+        if t_sum != t_calc_sum {
+            defmt::warn!(
+                "temp checksum did not match (ours: {:#x} != sensor's: {:#x})",
+                t_calc_sum,
+                t_sum
+            );
+        }
+        if h_sum != h_calc_sum {
+            defmt::warn!(
+                "humidity checksum did not match (ours: {:#x} != sensor's: {:#x})",
+                h_calc_sum,
+                h_sum
+            );
+        }
+
+        let temp: u16 = LittleEndian::read_u16(temp);
+        let humidity: u16 = LittleEndian::read_u16(humidity);
+
+        let temp_c = signal_to_temp(temp);
+        let humidity = signal_to_rh(humidity);
+
+        Ok(Measurement {
+            relative_humidity: humidity,
+            temperature: temp_c,
+        })
+    }
+}

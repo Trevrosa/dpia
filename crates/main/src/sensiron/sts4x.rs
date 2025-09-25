@@ -13,10 +13,16 @@ use crate::{
 
 // TODO: parse the raw returned data from commands
 
+// FIXME: is this correct?
+pub fn signal_to_temp(data: u16) -> i32 {
+    130 * (i32::from(data) / i32::from(u16::MAX))
+}
+
 make_sensor!(Sts4x, "the `STS4x` temperature sensor");
 
 impl<I: Instance> Sts4x<'_, I> {
-    pub async fn measure(&mut self, precision: Precision) -> Result<i16> {
+    /// Returns the temperature in degrees celsius.
+    pub async fn measure(&mut self, precision: Precision) -> Result<i32> {
         let data = self.0.measure(precision).await?;
 
         // datasheet section 4.4
@@ -29,17 +35,15 @@ impl<I: Instance> Sts4x<'_, I> {
         // FIXME: should we return an error instead?
         if sum != calc_sum {
             defmt::warn!(
-                "checksum did not match (ours: {:#x} != sensor's: {:#x})",
+                "temp checksum did not match (ours: {:#x} != sensor's: {:#x})",
                 calc_sum,
                 sum
             );
         }
 
         let temp: u16 = LittleEndian::read_u16(temp);
-        // FIXME: is this type conversion correct?
-        let temp_c = -45 + 175 * (i32::from(temp) / i32::from(u16::MAX));
+        let temp_c = signal_to_temp(temp);
 
-        // FIXME: can this cast truncate?
-        Ok(temp_c as i16)
+        Ok(temp_c)
     }
 }
