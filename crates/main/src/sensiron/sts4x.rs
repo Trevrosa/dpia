@@ -17,6 +17,10 @@ make_sensor!(Sts4x, "the `STS4x` temperature sensor");
 
 impl<I: Instance> Sts4x<'_, I> {
     /// Returns the temperature in degrees celsius.
+    /// 
+    /// # Errors
+    ///
+    /// Will error if there is an I2c error.
     pub async fn measure(&mut self, precision: Precision) -> Result<i32> {
         let data = self.0.measure(precision).await?;
 
