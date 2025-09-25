@@ -19,6 +19,10 @@ pub const CRC_8_SENSIRON: Algorithm<u8> = Algorithm {
 #[macro_export]
 macro_rules! concat_bytes {
     ($slice:expr, $slice1:expr, $combined_len:expr) => {{
+        debug_assert!(
+            $combined_len >= $slice.len() + $slice1.len(),
+            "`combined_len` must fit `slice` and `slice1`"
+        );
         let mut combined = [0; $combined_len];
         for (i, byte) in $slice.iter().enumerate() {
             combined[i] = *byte;
@@ -50,6 +54,20 @@ mod tests {
         let sum = crc.checksum(&[0xBE, 0xEF]);
 
         assert_eq!(sum, 0x92);
+    }
+
+    #[test]
+    #[should_panic]
+    fn concat_bytes_panic() {
+        concat_bytes!([1], [2], 0);
+    }
+
+    #[test]
+    fn concat_bytes() {
+        let empty: [u8; 0] = [];
+        assert_eq!(concat_bytes!(empty, empty, 0), []);
+        assert_eq!(concat_bytes!([1], [2], 2), [1, 2]);
+        assert_eq!(concat_bytes!([1, 2], [3, 4], 4), [1, 2, 3, 4]);
     }
 
     #[test]
