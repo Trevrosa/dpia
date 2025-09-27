@@ -28,7 +28,7 @@ macro_rules! concat_bytes {
             combined[i] = *byte;
         }
         for (i, byte) in $slice1.iter().enumerate() {
-            combined[($combined_len / 2) + i] = *byte;
+            combined[$slice.len() + i] = *byte;
         }
         combined
     }};
@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn concat_bytes_wrong_len() {
+    fn concat_bytes_bad_len() {
         concat_bytes!([1], [2], 0);
     }
 
@@ -68,6 +68,12 @@ mod tests {
         assert_eq!(concat_bytes!(empty, empty, 0), []);
         assert_eq!(concat_bytes!([1], [2], 2), [1, 2]);
         assert_eq!(concat_bytes!([1, 2], [3, 4], 4), [1, 2, 3, 4]);
+        assert_eq!(concat_bytes!([1, 2, 3], [4, 5], 5), [1, 2, 3, 4, 5]);
+        assert_eq!(concat_bytes!([1, 2], [3, 4, 5], 5), [1, 2, 3, 4, 5]);
+        assert_eq!(
+            concat_bytes!([1, 2], [3, 4, 5], 10),
+            [1, 2, 3, 4, 5, 0, 0, 0, 0, 0]
+        );
     }
 
     #[test]
