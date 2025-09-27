@@ -24,7 +24,7 @@ make_sensor!(Sht4x, "the `SHT4x` temperature-and-humidty sensor");
 
 impl<I: Instance> Sht4x<'_, I> {
     /// Returns the relative humidity as a % and temperature in degrees celsius.
-    /// 
+    ///
     /// # Errors
     ///
     /// Will error if there is an I2c error.

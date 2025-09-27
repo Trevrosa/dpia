@@ -17,7 +17,7 @@ make_sensor!(Sts4x, "the `STS4x` temperature sensor");
 
 impl<I: Instance> Sts4x<'_, I> {
     /// Returns the temperature in degrees celsius.
-    /// 
+    ///
     /// # Errors
     ///
     /// Will error if there is an I2c error.
