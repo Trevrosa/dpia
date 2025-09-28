@@ -3,6 +3,8 @@
 
 mod ble;
 
+use core::str::FromStr;
+
 use cyw43::{ScanOptions, bluetooth::BtDriver};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use defmt::unwrap;
@@ -11,9 +13,16 @@ use dpia::sensiron::{
     sts4x::{Sts4x, model_addrs::STS40_AD1B},
 };
 use embassy_executor::Spawner;
+use embassy_futures::yield_now;
+use embassy_net::{
+    DhcpConfig, Stack, StackResources, StaticConfigV4,
+    dns::DnsSocket,
+    tcp::client::{TcpClient, TcpClientState},
+};
 use embassy_rp::{
     binary_info::{EntryAddr, rp_cargo_version, rp_program_build_attribute, rp_program_name},
     bind_interrupts,
+    clocks::RoscRng,
     config::Config,
     gpio::{Level, Output},
     i2c,
@@ -21,6 +30,7 @@ use embassy_rp::{
     pio::{self, Pio},
 };
 use embassy_time::Timer;
+use reqwless::client::HttpClient;
 use static_cell::StaticCell;
 use trouble_host::prelude::ExternalController;
 
@@ -46,13 +56,19 @@ bind_interrupts!(struct Irqs {
 #[embassy_executor::task]
 async fn cyw43_task(
     runner: cyw43::Runner<'static, Output<'static>, PioSpi<'static, PIO0, 0, DMA_CH0>>,
-) {
-    runner.run().await;
+) -> ! {
+    runner.run().await
+}
+
+#[embassy_executor::task]
+async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'static>>) -> ! {
+    runner.run().await
 }
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) -> ! {
     let p = embassy_rp::init(Config::default());
+    let mut rng = RoscRng;
 
     defmt::info!("Hello, World!");
 
@@ -88,11 +104,12 @@ async fn main(spawner: Spawner) -> ! {
 
     defmt::debug!("pio and pins set up");
 
-    static STATE: StaticCell<cyw43::State> = StaticCell::new();
-    let state = STATE.init(cyw43::State::new());
+    // WIFI
+    static CYW43_STATE: StaticCell<cyw43::State> = StaticCell::new();
+    let cyw43_state = CYW43_STATE.init(cyw43::State::new());
 
-    let (_net_dev, bt_dev, mut control, runner) =
-        cyw43::new_with_bluetooth(state, pwr, spi, fw, btfw).await;
+    let (net_dev, bt_dev, mut control, runner) =
+        cyw43::new_with_bluetooth(cyw43_state, pwr, spi, fw, btfw).await;
     unwrap!(spawner.spawn(cyw43_task(runner)));
     control.init(clm).await;
 
@@ -115,6 +132,39 @@ async fn main(spawner: Spawner) -> ! {
 
     // control.join("SSID", JoinOptions::new(b"PASSWORD")).await;
 
+    // NET
+    static NET_RESOURCES: StaticCell<StackResources<3>> = StaticCell::new();
+
+    let mut dhcp_config = DhcpConfig::default();
+    dhcp_config.hostname = Some(unwrap!(heapless_08::String::from_str("trevor's pico 2w"))); // TODO: change this probably
+    let net_config = embassy_net::Config::dhcpv4(dhcp_config);
+
+    let seed = rng.next_u64();
+
+    let (stack, runner) = embassy_net::new(
+        net_dev,
+        net_config,
+        NET_RESOURCES.init(StackResources::new()),
+        seed,
+    );
+
+    unwrap!(spawner.spawn(net_task(runner)));
+
+    let net_config = wait_for_config(stack).await;
+    defmt::info!("our ip: {:?}", net_config.address.address());
+
+    static TCP_STATE: StaticCell<TcpClientState<1, 2, 1>> = StaticCell::new();
+    let tcp = TcpClient::new(stack, TCP_STATE.init(TcpClientState::new()));
+    let dns = DnsSocket::new(stack);
+
+    let mut client = HttpClient::new(&tcp, &dns);
+
+    // let mut resp = [0; 1024];
+    // let mut req = unwrap!(client.request(Method::GET, "http").await);
+    // let req = req.send(&mut resp).await;
+    // let req = unwrap!(req);
+
+    // BLUETOOTH
     defmt::info!("starting bluetooth controller");
     let bt_control: ExternalController<BtDriver, 10> = ExternalController::new(bt_dev);
     let address = control.address().await;
@@ -141,5 +191,14 @@ async fn main(spawner: Spawner) -> ! {
     loop {
         defmt::info!("finished");
         Timer::after_secs(1).await;
+    }
+}
+
+async fn wait_for_config(stack: Stack<'static>) -> StaticConfigV4 {
+    loop {
+        if let Some(config) = stack.config_v4() {
+            return config;
+        }
+        yield_now().await;
     }
 }
