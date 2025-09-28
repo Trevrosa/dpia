@@ -1,6 +1,0 @@
-# doesnt work with per-package-target
-[target.'cfg(all(target_arch = "arm", target_os = "none"))']
-runner = "probe-rs run --chip RP235x"
-
-[env]
-DEFMT_LOG = "info"
