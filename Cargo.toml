@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 
-members = ["crates/backend", "crates/lib", "crates/main"]
+members = ["crates/lib", "crates/main"]
 exclude = ["dep"]
 
 [profile.release]
