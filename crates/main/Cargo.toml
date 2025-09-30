@@ -46,5 +46,6 @@ heapless = { version = "0.9" }
 # embassy-net uses heapless 0.8
 heapless-08 = { version = "0.8", package = "heapless" }
 reqwless = { version = "0.13", features = ["defmt"] }
+defmt-serial = "0.10.0"
 
 dpia-lib = { path = "../lib" }

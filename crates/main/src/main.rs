@@ -26,15 +26,16 @@ use embassy_rp::{
     config::Config,
     gpio::{Level, Output},
     i2c,
-    peripherals::{DMA_CH0, I2C0, I2C1, PIO0},
+    peripherals::{DMA_CH0, I2C0, I2C1, PIO0, UART0},
     pio::{self, Pio},
+    uart::{self, Uart},
 };
 use embassy_time::Timer;
 use reqwless::client::HttpClient;
 use static_cell::StaticCell;
 use trouble_host::prelude::ExternalController;
 
-extern crate defmt_rtt;
+// extern crate defmt_rtt;
 extern crate panic_probe;
 
 use crate::ble::peripheral;
@@ -70,6 +71,11 @@ async fn main(spawner: Spawner) -> ! {
     let p = embassy_rp::init(Config::default());
     let mut rng = RoscRng;
 
+    let uart_config = uart::Config::default();
+    static SERIAL: StaticCell<Uart<'static, uart::Blocking>> = StaticCell::new();
+    let serial = Uart::new_blocking(p.UART0, p.PIN_18, p.PIN_17, uart_config);
+    defmt_serial::defmt_serial(SERIAL.init(serial));
+
     defmt::info!("Hello, World!");
 
     let fw = include_bytes!("../../../cyw43-firmware/43439A0.bin");
@@ -102,7 +108,7 @@ async fn main(spawner: Spawner) -> ! {
         p.DMA_CH0,
     );
 
-    defmt::debug!("pio and pins set up");
+    defmt::debug!("wifi: pio and pins set up");
 
     // WIFI
     static CYW43_STATE: StaticCell<cyw43::State> = StaticCell::new();
