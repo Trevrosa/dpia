@@ -8,10 +8,10 @@ use core::str::FromStr;
 use cyw43::{ScanOptions, bluetooth::BtDriver};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use defmt::unwrap;
-use dpia::sensiron::{
-    sht4x::{Sht4x, model_addrs::SHT40_AD1B},
-    sts4x::{Sts4x, model_addrs::STS40_AD1B},
-};
+// use dpia::sensiron::{
+//     sht4x::{Sht4x, model_addrs::SHT40_AD1B},
+//     sts4x::{Sts4x, model_addrs::STS40_AD1B},
+// };
 use embassy_executor::Spawner;
 use embassy_futures::yield_now;
 use embassy_net::{
@@ -26,16 +26,15 @@ use embassy_rp::{
     config::Config,
     gpio::{Level, Output},
     i2c,
-    peripherals::{DMA_CH0, I2C0, I2C1, PIO0, UART0},
+    peripherals::{DMA_CH0, I2C0, I2C1, PIO0},
     pio::{self, Pio},
-    uart::{self, Uart},
 };
 use embassy_time::Timer;
 use reqwless::client::HttpClient;
 use static_cell::StaticCell;
 use trouble_host::prelude::ExternalController;
 
-// extern crate defmt_rtt;
+extern crate defmt_rtt;
 extern crate panic_probe;
 
 use crate::ble::peripheral;
@@ -70,11 +69,6 @@ async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'sta
 async fn main(spawner: Spawner) -> ! {
     let p = embassy_rp::init(Config::default());
     let mut rng = RoscRng;
-
-    let uart_config = uart::Config::default();
-    static SERIAL: StaticCell<Uart<'static, uart::Blocking>> = StaticCell::new();
-    let serial = Uart::new_blocking(p.UART0, p.PIN_18, p.PIN_17, uart_config);
-    defmt_serial::defmt_serial(SERIAL.init(serial));
 
     defmt::info!("Hello, World!");
 
@@ -177,22 +171,22 @@ async fn main(spawner: Spawner) -> ! {
     peripheral(bt_control, address).await;
 
     // TODO: do we need two i2c buses?
-    let humidity = Sht4x::new(
-        p.I2C0,
-        p.PIN_1,
-        p.PIN_0,
-        Irqs,
-        i2c::Config::default(),
-        SHT40_AD1B,
-    );
-    let temp = Sts4x::new(
-        p.I2C1,
-        p.PIN_11,
-        p.PIN_10,
-        Irqs,
-        i2c::Config::default(),
-        STS40_AD1B,
-    );
+    // let humidity = Sht4x::new(
+    //     p.I2C0,
+    //     p.PIN_1,
+    //     p.PIN_0,
+    //     Irqs,
+    //     i2c::Config::default(),
+    //     SHT40_AD1B,
+    // );
+    // let temp = Sts4x::new(
+    //     p.I2C1,
+    //     p.PIN_11,
+    //     p.PIN_10,
+    //     Irqs,
+    //     i2c::Config::default(),
+    //     STS40_AD1B,
+    // );
 
     loop {
         defmt::info!("finished");
