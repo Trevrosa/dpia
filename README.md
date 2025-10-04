@@ -6,7 +6,7 @@ see also [dpia-backend](https://github.com/Trevrosa/dpia-backend)
 
 ## running
 
-use [just](https://github.com/casey/just/).
+this project uses [just](https://github.com/casey/just/).
 
 see the commands in the `justfile` with `just -l`.
 
