@@ -72,19 +72,16 @@ async fn main(spawner: Spawner) -> ! {
 
     defmt::info!("Hello, World!");
 
-    let fw = include_bytes!("../../../cyw43-firmware/43439A0.bin");
-    let btfw = include_bytes!("../../../cyw43-firmware/43439A0_btfw.bin");
-    // "Country Locale Matrix"
-    let clm = include_bytes!("../../../cyw43-firmware/43439A0_clm.bin");
+    // let fw = include_bytes!("../../../cyw43-firmware/43439A0.bin");
+    // let btfw = include_bytes!("../../../cyw43-firmware/43439A0_btfw.bin");
+    // // "Country Locale Matrix"
+    // let clm = include_bytes!("../../../cyw43-firmware/43439A0_clm.bin");
+    // defmt::info!("fw={} btfw={} clm={}", fw.len(), btfw.len(), clm.len());
 
-    defmt::info!("fw={} btfw={} clm={}", fw.len(), btfw.len(), clm.len());
-
-    // TODO: To make flashing faster for development, you may want to flash the firmwares independently
-    // at hardcoded addresses, instead of baking them into the program with `include_bytes!`:
-    //     probe-rs download ../../cyw43-firmware/43439A0.bin --binary-format bin --chip RP235x --base-address 0x10100000
-    //     probe-rs download ../../cyw43-firmware/43439A0_clm.bin --binary-format bin --chip RP235x --base-address 0x10140000
-    //let fw = unsafe { core::slice::from_raw_parts(0x10100000 as *const u8, 230321) };
-    //let clm = unsafe { core::slice::from_raw_parts(0x10140000 as *const u8, 4752) };
+    // cyw43 firmware can be flashed with `just prepare-cyw43`
+    let fw = unsafe { core::slice::from_raw_parts(0x101b0000 as *const u8, 231077) };
+    let btfw = unsafe { core::slice::from_raw_parts(0x101f0000 as *const u8, 6164) };
+    let clm = unsafe { core::slice::from_raw_parts(0x101f8000 as *const u8, 984) };
 
     // OP wireless power on signal
     let pwr = Output::new(p.PIN_23, Level::Low);
