@@ -12,6 +12,8 @@ use trouble_host::{
     gap::{GapConfig, PeripheralConfig},
 };
 
+// TODO: this actually should be ble beacon or something else
+
 const MAX_CONNECTIONS: usize = 2;
 
 const MAX_L2CAP_CHANNELS: usize = 2;
