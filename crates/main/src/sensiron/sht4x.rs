@@ -11,7 +11,6 @@ use crate::{
     sensiron::generic::{Precision, Result},
 };
 
-// TODO: parse the raw returned data from commands
 
 #[derive(defmt::Format)]
 pub struct Measurement {
@@ -41,7 +40,7 @@ impl<I: Instance> Sht4x<'_, I> {
         let t_calc_sum = crc.checksum(temp);
         let h_calc_sum = crc.checksum(humidity);
 
-        // FIXME: should we return an error instead?
+        // FIXME: return an error instead?
         if t_sum != t_calc_sum {
             defmt::warn!(
                 "temp checksum did not match (ours: {:#x} != sensor's: {:#x})",

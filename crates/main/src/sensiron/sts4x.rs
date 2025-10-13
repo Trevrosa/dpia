@@ -11,8 +11,6 @@ use crate::{
     sensiron::generic::{Precision, Result},
 };
 
-// TODO: parse the raw returned data from commands
-
 make_sensor!(Sts4x, "the `STS4x` temperature sensor");
 
 impl<I: Instance> Sts4x<'_, I> {
@@ -31,7 +29,7 @@ impl<I: Instance> Sts4x<'_, I> {
         let crc = Crc::<u8>::new(&CRC_8_SENSIRON);
         let calc_sum = crc.checksum(temp);
 
-        // FIXME: should we return an error instead?
+        // FIXME: return an error instead?
         if sum != calc_sum {
             defmt::warn!(
                 "temp checksum did not match (ours: {:#x} != sensor's: {:#x})",

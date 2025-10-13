@@ -62,13 +62,13 @@ async fn main(spawner: Spawner) -> ! {
 
     // let fw = include_bytes!("../../../cyw43-firmware/43439A0.bin");
     // let btfw = include_bytes!("../../../cyw43-firmware/43439A0_btfw.bin");
-    // // "Country Locale Matrix"
     // let clm = include_bytes!("../../../cyw43-firmware/43439A0_clm.bin");
     // defmt::info!("fw={} btfw={} clm={}", fw.len(), btfw.len(), clm.len());
-
+    
     // cyw43 firmware can be flashed with `just prepare-cyw43`
     let fw = unsafe { core::slice::from_raw_parts(0x101b0000 as *const u8, 231077) };
     let btfw = unsafe { core::slice::from_raw_parts(0x101f0000 as *const u8, 6164) };
+    // "Country Locale Matrix"
     let clm = unsafe { core::slice::from_raw_parts(0x101f8000 as *const u8, 984) };
 
     // OP wireless power on signal

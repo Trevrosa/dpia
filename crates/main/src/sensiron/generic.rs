@@ -6,8 +6,8 @@ use embassy_rp::Peri;
 use embassy_rp::i2c::{self, Async, Config, I2c, Instance, InterruptHandler, SclPin, SdaPin};
 use embassy_rp::interrupt::typelevel::Binding;
 
-// TODO: add docs
-
+/// A generic Sensiron sensor. A custom implementation can be created with the macro `make_sensor!(NAME, DOCS)`.
+/// 
 /// Uses async i2c.
 pub struct Sensor<'a, I: Instance> {
     bus: I2c<'a, I, Async>,
@@ -17,6 +17,7 @@ pub struct Sensor<'a, I: Instance> {
 pub type Result<T> = core::result::Result<T, i2c::Error>;
 
 impl<'d, I: Instance> Sensor<'d, I> {
+    /// Create a new sensor instance.
     pub fn new<Scl, Sda, Irq>(
         peri: Peri<'d, I>,
         scl: Peri<'d, Scl>,
@@ -35,7 +36,13 @@ impl<'d, I: Instance> Sensor<'d, I> {
         Self { bus, addr }
     }
 
-    // the max return size is 6 bytes (2 * 8-bit T-data; 8-bit CRC; 2 * 8-bit RH-data; 8-bit CRC).
+    /// Send a command to the sensor and get its response.
+    /// 
+    /// Note: the max return size is `6 bytes`: (`2 * 8-bit` T-data; `8-bit` CRC; `2 * 8-bit` RH-data; `8-bit` CRC).
+    /// 
+    /// # Errors
+    /// 
+    /// Will error if there is an I2c error.
     async fn run_cmd(&mut self, cmd: u8) -> Result<[u8; 6]> {
         let mut result = [0; 6];
         self.bus
@@ -44,6 +51,8 @@ impl<'d, I: Instance> Sensor<'d, I> {
         Ok(result)
     }
 
+    /// Run the measure command with the provided [`Precision`] and get its response.
+    /// 
     /// # Errors
     ///
     /// Will error if there is an I2c error.
@@ -52,6 +61,8 @@ impl<'d, I: Instance> Sensor<'d, I> {
         self.run_cmd(cmd).await
     }
 
+    /// Read the serial number of the sensor.
+    /// 
     /// # Errors
     ///
     /// Will error if there is an I2c error.
@@ -85,10 +96,12 @@ impl<'d, I: Instance> Sensor<'d, I> {
 
         let combined = concat_bytes!(serial, serial1, 4);
 
-        // TODO: should we return a str instead?
+        // TODO: return a str instead?
         Ok(combined)
     }
 
+    /// Tell the sensor to soft-reset.
+    /// 
     /// # Errors
     ///
     /// Will error if there is an I2c error.
@@ -96,13 +109,13 @@ impl<'d, I: Instance> Sensor<'d, I> {
         const SOFT_RESET: u8 = 0x94;
         // special command, only ACKs, so no return data
         self.bus.write_async(self.addr, [SOFT_RESET]).await
-        // TODO: should we wait a bit here?
+        // TODO: wait a bit here?
     }
 
     // ..heating cmds
 }
 
-/// Measurement precision
+/// Measurement precision.
 pub enum Precision {
     High,
     Medium,

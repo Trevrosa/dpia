@@ -84,7 +84,7 @@ async fn gatt_event_task<P: PacketPool>(
             GattConnectionEvent::Gatt { event } => {
                 match &event {
                     GattEvent::Read(event) => {
-                        // TODO:
+                        // TODO: provide a value to the connectee
                         // if event.handle() == level.handle {
                         // let value = server.get(&level);
                         defmt::info!("[gatt] read to handle `{}`", event.handle());
