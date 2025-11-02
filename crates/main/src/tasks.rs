@@ -6,7 +6,7 @@ use embassy_rp::{
 };
 use trouble_host::prelude::ExternalController;
 
-use crate::ble::peripheral;
+use crate::ble::beacon;
 
 #[embassy_executor::task]
 pub async fn cyw43(
@@ -22,5 +22,5 @@ pub async fn net(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'stat
 
 #[embassy_executor::task]
 pub async fn bt(controller: ExternalController<BtDriver<'static>, 10>, address: [u8; 6]) {
-    peripheral(controller, address).await;
+    beacon(controller, address).await;
 }
