@@ -10,6 +10,21 @@ use trouble_host::{Address, Controller, Host, HostResources};
 
 // TODO: this actually should be ble beacon or something else
 
+const BASE_ADV: [AdStructure; 2] = [
+    AdStructure::CompleteLocalName(b"Trevor's IA"),
+    AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
+];
+
+const COMPANY_IDENT: u16 = 0;
+
+fn make_payload<'a>(payload: &'a [u8]) -> AdStructure<'a> {
+    AdStructure::ManufacturerSpecificData { company_identifier: COMPANY_IDENT, payload }
+}
+
+fn make_adv<'a>(payload: &'a [u8]) -> [AdStructure<'a>; 3] {
+    [BASE_ADV[0], BASE_ADV[1], make_payload(payload)]
+}
+
 pub async fn beacon(controller: impl Controller, address: [u8; 6]) {
     let mut resources: HostResources<DefaultPacketPool, 0, 0, 27> = HostResources::new();
     let address = Address::random(address);
@@ -23,13 +38,7 @@ pub async fn beacon(controller: impl Controller, address: [u8; 6]) {
     defmt::info!("built ble host");
 
     let mut adv_data = [0; 64];
-    let adv_len = AdStructure::encode_slice(
-        &[
-            AdStructure::CompleteLocalName(b"Trevor's IA"),
-            AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
-        ],
-        &mut adv_data[..],
-    );
+    let adv_len = AdStructure::encode_slice(&make_adv(b"Hi"), &mut adv_data[..]);
     let adv_len = unwrap!(adv_len);
     let adv_data = &adv_data[..adv_len];
 
@@ -41,11 +50,15 @@ pub async fn beacon(controller: impl Controller, address: [u8; 6]) {
             params.interval_min = Duration::from_millis(25);
             params.interval_max = Duration::from_millis(150);
             let _advertiser = peripheral
-                .advertise(&params, NonconnectableNonscannableUndirected { adv_data })
+                .advertise(&params, NonconnectableNonscannableUndirected { adv_data: &adv_data[..] })
                 .await
                 .unwrap();
             loop {
-                Timer::after(ADVERTISE_).await;
+                Timer::after(Duration::from_millis(10)).await;
+                let len = AdStructure::encode_slice(&make_adv(b"Hi"), &mut adv_data[..]);
+                let len = unwrap!(len);
+
+                peripheral.update_adv_data(NonconnectableNonscannableUndirected { adv_data: &adv_data[..] }).await;
             }
         }
     });
