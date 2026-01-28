@@ -51,6 +51,7 @@ pub fn signal_to_temp(data: u16) -> u16 {
 }
 
 /// Convert an `i32` to a `u16`, returning `min` or `max` if `val` not in range `min..max` 
+#[inline]
 #[allow(clippy::cast_sign_loss)]
 fn downcast_with(val: f32, min: u16, max: u16) -> u16 {
     if val > max.into() {
