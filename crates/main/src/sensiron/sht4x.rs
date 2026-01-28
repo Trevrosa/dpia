@@ -15,7 +15,7 @@ use crate::{
 pub struct Measurement {
     relative_humidity: u16,
     /// in degrees celsius.
-    temperature: i32,
+    temperature: u16,
 }
 
 make_sensor!(Sht4x, "the `SHT4x` temperature-and-humidty sensor");

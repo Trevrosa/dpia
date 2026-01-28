@@ -96,7 +96,6 @@ impl<'d, I: Instance> Sensor<'d, I> {
 
         let combined = concat_bytes!(serial, serial1, 4);
 
-        // TODO: return a str instead?
         Ok(combined)
     }
 
@@ -112,7 +111,7 @@ impl<'d, I: Instance> Sensor<'d, I> {
         // TODO: wait a bit here?
     }
 
-    // ..heating cmds
+    // TODO: ..heating cmds
 }
 
 /// Measurement precision.
@@ -123,6 +122,7 @@ pub enum Precision {
 }
 
 impl Precision {
+    /// The corresponding i2c command.
     pub fn cmd(self) -> u8 {
         match self {
             Precision::High => 0xFD,

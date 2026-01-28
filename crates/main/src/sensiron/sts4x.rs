@@ -19,7 +19,7 @@ impl<I: Instance> Sts4x<'_, I> {
     /// # Errors
     ///
     /// Will error if there is an I2c error.
-    pub async fn measure(&mut self, precision: Precision) -> Result<i32> {
+    pub async fn measure(&mut self, precision: Precision) -> Result<u16> {
         let data = self.0.measure(precision).await?;
 
         // datasheet section 4.4

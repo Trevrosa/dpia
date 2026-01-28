@@ -34,14 +34,32 @@ macro_rules! concat_bytes {
     }};
 }
 
-// FIXME: is this correct?
+// SHT4x_5: section 4.5, eq (1)
+/// Returns in %RH.
 pub fn signal_to_rh(data: u16) -> u16 {
-    119 * (data / u16::MAX)
+    // use f32 for fractional precision
+    let rh = 125.0 * (f32::from(data) / f32::from(u16::MAX)) - 6.0;
+    downcast_with(rh, 0, 100)
 }
 
-// FIXME: is this correct?
-pub fn signal_to_temp(data: u16) -> i32 {
-    130 * (i32::from(data) / i32::from(u16::MAX))
+// SHT4x_5: section 4.5, eq (2). equation is same as in STS4x datasheet.
+/// Returns in degrees celcius.
+pub fn signal_to_temp(data: u16) -> u16 {
+    // use f32 for fractional precision
+    let temp = 175.0 * (f32::from(data) / f32::from(u16::MAX)) - 45.0;
+    downcast_with(temp, 0, 100)
+}
+
+/// Convert an `i32` to a `u16`, returning `min` or `max` if `val` not in range `min..max` 
+#[allow(clippy::cast_sign_loss)]
+fn downcast_with(val: f32, min: u16, max: u16) -> u16 {
+    if val > max.into() {
+        max
+    } else if val < min.into() {
+        min
+    } else {
+        val as u16
+    }
 }
 
 #[cfg(test)]
@@ -77,9 +95,16 @@ mod tests {
     }
 
     #[test]
-    fn signal() {
-        let rh = signal_to_rh(0xBEEF);
-
-        assert_ne!(rh, 0);
+    fn temp_signal() {
+        for i in 0..=u16::MAX {
+            signal_to_temp(i);
+        }
+    }
+    
+    #[test]
+    fn rh_signal() {
+        for i in 0..=u16::MAX {
+            signal_to_rh(i);
+        }
     }
 }
