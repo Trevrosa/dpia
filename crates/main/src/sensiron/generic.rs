@@ -7,7 +7,7 @@ use embassy_rp::i2c::{self, Async, Config, I2c, Instance, InterruptHandler, SclP
 use embassy_rp::interrupt::typelevel::Binding;
 
 /// A generic Sensiron sensor. A custom implementation can be created with the macro `make_sensor!(NAME, DOCS)`.
-/// 
+///
 /// Uses async i2c.
 pub struct Sensor<'a, I: Instance> {
     bus: I2c<'a, I, Async>,
@@ -37,11 +37,11 @@ impl<'d, I: Instance> Sensor<'d, I> {
     }
 
     /// Send a command to the sensor and get its response.
-    /// 
+    ///
     /// Note: the max return size is `6 bytes`: (`2 * 8-bit` T-data; `8-bit` CRC; `2 * 8-bit` RH-data; `8-bit` CRC).
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Will error if there is an I2c error.
     async fn run_cmd(&mut self, cmd: u8) -> Result<[u8; 6]> {
         let mut result = [0; 6];
@@ -52,7 +52,7 @@ impl<'d, I: Instance> Sensor<'d, I> {
     }
 
     /// Run the measure command with the provided [`Precision`] and get its response.
-    /// 
+    ///
     /// # Errors
     ///
     /// Will error if there is an I2c error.
@@ -62,7 +62,7 @@ impl<'d, I: Instance> Sensor<'d, I> {
     }
 
     /// Read the serial number of the sensor.
-    /// 
+    ///
     /// # Errors
     ///
     /// Will error if there is an I2c error.
@@ -101,7 +101,7 @@ impl<'d, I: Instance> Sensor<'d, I> {
     }
 
     /// Tell the sensor to soft-reset.
-    /// 
+    ///
     /// # Errors
     ///
     /// Will error if there is an I2c error.

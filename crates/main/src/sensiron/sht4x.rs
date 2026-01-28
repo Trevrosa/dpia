@@ -11,7 +11,6 @@ use crate::{
     sensiron::generic::{Precision, Result},
 };
 
-
 #[derive(defmt::Format)]
 pub struct Measurement {
     relative_humidity: u16,

@@ -1,4 +1,0 @@
-[submodule "trouble"]
-	path = dep/trouble
-	url = https://github.com/trevrosa/trouble
-	branch = bt-hci-0.4
