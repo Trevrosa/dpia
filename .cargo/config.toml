@@ -1,2 +1,8 @@
+[target.thumbv8m.main-none-eabi]
+rustflags = [
+    # improve asm codegen
+    "-Ctarget-cpu=cortex-m33",
+]
+
 [env]
 DEFMT_LOG = "info"
