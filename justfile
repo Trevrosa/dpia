@@ -15,3 +15,8 @@ flash: build
 # use a release build
 flash-rel: build-rel
     picotool load --update --verify --execute -t elf target/thumbv8m.main-none-eabihf/release/dpia
+
+build:
+    cargo build
+build-rel:
+    cargo build -r
