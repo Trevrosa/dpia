@@ -14,9 +14,9 @@ use crate::{
     },
 };
 
-make_sensor!(Sts4x, "the `STS4x` temperature sensor");
+make_sensor!(Sts4x, "the `STS4x` temperature sensor", 6);
 
-impl<I: Instance> Sts4x<'_, I, 6> {
+impl<I: Instance> Sts4x<'_, I> {
     /// Returns the temperature in degrees celsius.
     ///
     /// # Errors

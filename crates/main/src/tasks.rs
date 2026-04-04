@@ -64,15 +64,15 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
         dormant_sleep();
 
         // it should now be monday 6:00, sleep until saturday 00:00
-        let mut weekend = timer.now_as_datetime().unwrap();
-        weekend.day_of_week = aon_timer::DayOfWeek::Saturday;
-        weekend.hour = 0;
-        weekend.minute = 0;
-
         info!("woke up, syncing time");
         timer.stop();
         timer.set_counter(sync_epoch_ms(&mut *client.lock().await).await);
         timer.start();
+
+        let mut weekend = timer.now_as_datetime().unwrap();
+        weekend.day_of_week = aon_timer::DayOfWeek::Saturday;
+        weekend.hour = 0;
+        weekend.minute = 0;
 
         info!("waiting for {:?}", weekend.timestamp_millis());
         timer.set_alarm_at_datetime(weekend).unwrap();

@@ -5,7 +5,7 @@ pub mod sts4x;
 
 #[macro_export]
 macro_rules! make_sensor {
-    ($name:ident, $doc:expr) => {
+    ($name:ident, $doc:expr, $max_size:expr) => {
         use embassy_rp::Peri;
         use embassy_rp::i2c::{Config, Instance, InterruptHandler, SclPin, SdaPin};
         use embassy_rp::interrupt::typelevel::Binding;
@@ -13,9 +13,9 @@ macro_rules! make_sensor {
         use super::generic::Sensor;
 
         #[doc = $doc]
-        pub struct $name<'d, I: Instance, const MAX_SIZE: usize>(Sensor<'d, I, MAX_SIZE>);
+        pub struct $name<'d, I: Instance>(Sensor<'d, I, $max_size>);
 
-        impl<'d, I: Instance, const MAX_SIZE: usize> $name<'d, I, MAX_SIZE> {
+        impl<'d, I: Instance> $name<'d, I> {
             pub fn new<Scl, Sda, Irq>(
                 peri: Peri<'d, I>,
                 scl: Peri<'d, Scl>,
@@ -34,16 +34,14 @@ macro_rules! make_sensor {
             }
         }
 
-        impl<'d, I: Instance, const MAX_SIZE: usize> core::ops::Deref for $name<'d, I, MAX_SIZE> {
-            type Target = Sensor<'d, I, MAX_SIZE>;
+        impl<'d, I: Instance> core::ops::Deref for $name<'d, I> {
+            type Target = Sensor<'d, I, $max_size>;
             fn deref(&self) -> &Self::Target {
                 &self.0
             }
         }
 
-        impl<'d, I: Instance, const MAX_SIZE: usize> core::ops::DerefMut
-            for $name<'d, I, MAX_SIZE>
-        {
+        impl<'d, I: Instance> core::ops::DerefMut for $name<'d, I> {
             fn deref_mut(&mut self) -> &mut Self::Target {
                 &mut self.0
             }

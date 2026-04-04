@@ -8,8 +8,8 @@ use core::str::FromStr;
 use cyw43::{A4, Aligned, JoinOptions, ScanOptions};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use defmt::{info, unwrap};
-use dpia::sensiron::sen5x::{self, Sen5x};
 // use dpia::sensiron::{
+//     sen5x::{self, Sen5x},
 //     sht4x::{Sht4x, model_addrs::SHT40_AD1B},
 //     sts4x::{Sts4x, model_addrs::STS40_AD1B},
 // };
@@ -33,7 +33,7 @@ use embassy_rp::{
     pio::{self, Pio},
     spinlock_mutex::SpinlockRawMutex,
 };
-use embassy_sync::{channel::Channel, mutex::Mutex};
+use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
 use reqwless::client::HttpClient;
 use static_cell::StaticCell;
@@ -194,7 +194,7 @@ async fn main(spawner: Spawner) -> ! {
     // spawner.spawn(unwrap!(bt(bt_control, address)));
 
     // TODO: do we need two i2c buses?
-    // let humidity: Sht4x<'_, I2C0, 6> = Sht4x::new(
+    // let humidity = Sht4x::new(
     //     p.I2C0,
     //     p.PIN_1,
     //     p.PIN_0,
@@ -202,7 +202,7 @@ async fn main(spawner: Spawner) -> ! {
     //     i2c::Config::default(),
     //     SHT40_AD1B,
     // );
-    // let temp: Sts4x<'_, I2C0, 6> = Sts4x::new(
+    // let temp = Sts4x::new(
     //     p.I2C0,
     //     p.PIN_12,
     //     p.PIN_13,
@@ -210,7 +210,7 @@ async fn main(spawner: Spawner) -> ! {
     //     i2c::Config::default(),
     //     STS40_AD1B,
     // );
-    // let air: Sen5x<'_, I2C1, 48> = Sen5x::new(
+    // let air = Sen5x::new(
     //     p.I2C1,
     //     p.PIN_11,
     //     p.PIN_10,

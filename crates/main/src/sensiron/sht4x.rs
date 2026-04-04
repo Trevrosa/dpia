@@ -21,9 +21,9 @@ pub struct Measurement {
     temperature: u16,
 }
 
-make_sensor!(Sht4x, "the `SHT4x` temperature-and-humidty sensor");
+make_sensor!(Sht4x, "the `SHT4x` temperature-and-humidty sensor", 6);
 
-impl<I: Instance> Sht4x<'_, I, 6> {
+impl<I: Instance> Sht4x<'_, I> {
     /// Returns the relative humidity as a % and temperature in degrees celsius.
     ///
     /// # Errors

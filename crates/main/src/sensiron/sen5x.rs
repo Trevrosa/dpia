@@ -9,7 +9,7 @@ use crate::{make_sensor, sensiron::sum_check};
 
 pub const ADDR: u8 = 0x69;
 
-make_sensor!(Sen5x, "the `SEN5x` particulate matter sensor");
+make_sensor!(Sen5x, "the `SEN5x` particulate matter sensor", 48);
 
 #[derive(defmt::Format)]
 pub struct Measurement {
@@ -20,7 +20,7 @@ pub struct Measurement {
 }
 
 // sen5x uses big-endian, max size from the read serial number command in datasheet section 6.1.15
-impl<I: Instance> Sen5x<'_, I, 48> {
+impl<I: Instance> Sen5x<'_, I> {
     /// Read the measured values of the sensor.
     ///
     /// Note: this takes longer to run because we need to put the sensor in measurement mode,
