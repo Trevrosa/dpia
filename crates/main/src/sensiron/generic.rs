@@ -6,17 +6,21 @@ use embassy_rp::Peri;
 use embassy_rp::i2c::{self, Async, Config, I2c, Instance, InterruptHandler, SclPin, SdaPin};
 use embassy_rp::interrupt::typelevel::Binding;
 
+use crate::sensiron::sum_check;
+
 /// A generic Sensiron sensor. A custom implementation can be created with the macro `make_sensor!(NAME, DOCS)`.
 ///
 /// Uses async i2c.
-pub struct Sensor<'a, I: Instance> {
+///
+/// `I` is the i2c peripheral instance, `MAX_SIZE` is the max size (in bytes) of the return data (e.g. `6` for `SHT4x` and `STS4x`).
+pub struct Sensor<'a, I: Instance, const MAX_SIZE: usize> {
     bus: I2c<'a, I, Async>,
     addr: u8,
 }
 
 pub type Result<T> = core::result::Result<T, i2c::Error>;
 
-impl<'d, I: Instance> Sensor<'d, I> {
+impl<'d, I: Instance, const MAX_SIZE: usize> Sensor<'d, I, MAX_SIZE> {
     /// Create a new sensor instance.
     pub fn new<Scl, Sda, Irq>(
         peri: Peri<'d, I>,
@@ -38,37 +42,43 @@ impl<'d, I: Instance> Sensor<'d, I> {
 
     /// Send a command to the sensor and get its response.
     ///
-    /// Note: the max return size is `6 bytes`: (`2 * 8-bit` T-data; `8-bit` CRC; `2 * 8-bit` RH-data; `8-bit` CRC).
-    ///
     /// # Errors
     ///
     /// Will error if there is an I2c error.
-    async fn run_cmd(&mut self, cmd: u8) -> Result<[u8; 6]> {
-        let mut result = [0; 6];
+    pub(super) async fn run_cmd(&mut self, cmd: [u8; 2]) -> Result<[u8; MAX_SIZE]> {
+        let mut result = [0; MAX_SIZE];
         self.bus
-            .write_read_async(self.addr, [cmd], &mut result)
+            .write_read_async(self.addr, cmd, &mut result)
             .await?;
         Ok(result)
     }
 
-    /// Run the measure command with the provided [`Precision`] and get its response.
-    ///
-    /// # Errors
-    ///
-    /// Will error if there is an I2c error.
-    pub async fn measure(&mut self, precision: Precision) -> Result<[u8; 6]> {
-        let cmd = precision.cmd();
-        self.run_cmd(cmd).await
+    pub(super) async fn write_cmd(&mut self, cmd: [u8; 2]) -> Result<()> {
+        self.bus.write_async(self.addr, cmd).await
     }
 
-    /// Read the serial number of the sensor.
+    /// Run the measure command with the provided [`Precision`] and get its response. (only works for `SHT4x` and `STS4x`)
     ///
     /// # Errors
     ///
     /// Will error if there is an I2c error.
-    pub async fn serial_num(&mut self) -> Result<[u8; 4]> {
-        const READ_SERIAL_NUMBER: u8 = 0x89;
-        let data = self.run_cmd(READ_SERIAL_NUMBER).await?;
+    pub async fn measure(&mut self, precision: Precision) -> Result<[u8; MAX_SIZE]> {
+        let cmd = precision.cmd();
+        self.run_cmd([0, cmd]).await
+    }
+
+    /// Read the serial number of the sensor. (sht4x and sts4x only)
+    ///
+    /// # Errors
+    ///
+    /// Will error if there is an I2c error.
+    pub async fn serial_num(&mut self, cmd: u8) -> Result<[u8; 4]> {
+        let data = self.run_cmd([0, cmd]).await?;
+
+        assert!(
+            MAX_SIZE >= 6,
+            "MAX_SIZE must be at least 6 to read the serial number"
+        );
 
         let serial = &data[0..=1];
         let sum = data[2];
@@ -76,23 +86,9 @@ impl<'d, I: Instance> Sensor<'d, I> {
         let sum1 = data[5];
 
         let crc = Crc::<u8>::new(&CRC_8_SENSIRON);
-        let calc_sum = crc.checksum(serial);
-        let calc_sum1 = crc.checksum(serial1);
 
-        if sum != calc_sum {
-            defmt::warn!(
-                "serial checksum did not match (ours: {:#x} != sensor's: {:#x})",
-                calc_sum,
-                sum
-            );
-        }
-        if sum1 != calc_sum1 {
-            defmt::warn!(
-                "serial1 checksum did not match (ours: {:#x} != sensor's: {:#x})",
-                calc_sum1,
-                sum1
-            );
-        }
+        sum_check(&crc, serial, sum, "serial");
+        sum_check(&crc, serial1, sum1, "serial1");
 
         let combined = concat_bytes!(serial, serial1, 4);
 
@@ -107,7 +103,7 @@ impl<'d, I: Instance> Sensor<'d, I> {
     pub async fn soft_reset(&mut self) -> Result<()> {
         const SOFT_RESET: u8 = 0x94;
         // special command, only ACKs, so no return data
-        self.bus.write_async(self.addr, [SOFT_RESET]).await
+        self.write_cmd([0, SOFT_RESET]).await
         // TODO: wait a bit here?
     }
 

@@ -8,12 +8,15 @@ use dpia_lib::{CRC_8_SENSIRON, signal_to_temp};
 
 use crate::{
     make_sensor,
-    sensiron::generic::{Precision, Result},
+    sensiron::{
+        generic::{Precision, Result},
+        sum_check,
+    },
 };
 
 make_sensor!(Sts4x, "the `STS4x` temperature sensor");
 
-impl<I: Instance> Sts4x<'_, I> {
+impl<I: Instance> Sts4x<'_, I, 6> {
     /// Returns the temperature in degrees celsius.
     ///
     /// # Errors
@@ -27,20 +30,17 @@ impl<I: Instance> Sts4x<'_, I> {
         let sum = data[2];
 
         let crc = Crc::<u8>::new(&CRC_8_SENSIRON);
-        let calc_sum = crc.checksum(temp);
 
-        // FIXME: return an error instead?
-        if sum != calc_sum {
-            defmt::warn!(
-                "temp checksum did not match (ours: {:#x} != sensor's: {:#x})",
-                calc_sum,
-                sum
-            );
-        }
+        sum_check(&crc, temp, sum, "temperature");
 
         let temp: u16 = LittleEndian::read_u16(temp);
         let temp_c = signal_to_temp(temp);
 
         Ok(temp_c)
+    }
+
+    pub async fn serial_num(&mut self) -> Result<[u8; 4]> {
+        const READ_SERIAL_NUMBER: u8 = 0x89;
+        self.0.serial_num(READ_SERIAL_NUMBER).await
     }
 }

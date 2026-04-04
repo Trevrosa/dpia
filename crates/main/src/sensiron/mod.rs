@@ -1,4 +1,5 @@
 pub mod generic;
+pub mod sen5x;
 pub mod sht4x;
 pub mod sts4x;
 
@@ -12,9 +13,9 @@ macro_rules! make_sensor {
         use super::generic::Sensor;
 
         #[doc = $doc]
-        pub struct $name<'d, I: Instance>(Sensor<'d, I>);
+        pub struct $name<'d, I: Instance, const MAX_SIZE: usize>(Sensor<'d, I, MAX_SIZE>);
 
-        impl<'d, I: Instance> $name<'d, I> {
+        impl<'d, I: Instance, const MAX_SIZE: usize> $name<'d, I, MAX_SIZE> {
             pub fn new<Scl, Sda, Irq>(
                 peri: Peri<'d, I>,
                 scl: Peri<'d, Scl>,
@@ -33,17 +34,32 @@ macro_rules! make_sensor {
             }
         }
 
-        impl<'d, I: Instance> core::ops::Deref for $name<'d, I> {
-            type Target = Sensor<'d, I>;
+        impl<'d, I: Instance, const MAX_SIZE: usize> core::ops::Deref for $name<'d, I, MAX_SIZE> {
+            type Target = Sensor<'d, I, MAX_SIZE>;
             fn deref(&self) -> &Self::Target {
                 &self.0
             }
         }
 
-        impl<'d, I: Instance> core::ops::DerefMut for $name<'d, I> {
+        impl<'d, I: Instance, const MAX_SIZE: usize> core::ops::DerefMut
+            for $name<'d, I, MAX_SIZE>
+        {
             fn deref_mut(&mut self) -> &mut Self::Target {
                 &mut self.0
             }
         }
     };
+}
+
+// FIXME: return an error instead of just warning?
+pub fn sum_check(crc: &crc::Crc<u8>, data: &[u8], sum: u8, item: &'static str) {
+    let calc_sum = crc.checksum(data);
+    if calc_sum != sum {
+        defmt::warn!(
+            "{} checksum did not match (ours: {:#x} != sensor's: {:#x})",
+            item,
+            calc_sum,
+            sum
+        );
+    }
 }

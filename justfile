@@ -9,6 +9,7 @@ prepare-cyw43:
     probe-rs download cyw43-firmware/43439A0.bin --binary-format bin --chip RP235x --base-address 0x101b0000
     probe-rs download cyw43-firmware/43439A0_btfw.bin --binary-format bin --chip RP235x --base-address 0x101f0000
     probe-rs download cyw43-firmware/43439A0_clm.bin --binary-format bin --chip RP235x --base-address 0x101f8000
+    probe-rs download cyw43-firmware/nvram_rp2040.bin --binary-format bin --chip RP235x --base-address 0x101f8400
 # use a debug build
 flash: build
     picotool load --update --verify --execute -t elf target/thumbv8m.main-none-eabihf/debug/dpia
