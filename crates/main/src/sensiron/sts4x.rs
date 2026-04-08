@@ -5,25 +5,30 @@ pub mod model_addrs;
 use byteorder::{ByteOrder, LittleEndian};
 use crc::Crc;
 use dpia_lib::{CRC_8_SENSIRON, signal_to_temp};
+use embassy_rp::i2c::Instance;
 
 use crate::{
     make_sensor,
     sensiron::{
-        generic::{Precision, Result},
+        generic::{I2cBus, Precision, Result},
         sum_check,
     },
 };
 
 make_sensor!(Sts4x, "the `STS4x` temperature sensor", 6);
 
-impl<I: Instance> Sts4x<'_, I> {
+impl Sts4x {
     /// Returns the temperature in degrees celsius.
     ///
     /// # Errors
     ///
     /// Will error if there is an I2c error.
-    pub async fn measure(&mut self, precision: Precision) -> Result<u16> {
-        let data = self.0.measure(precision).await?;
+    pub async fn measure<I: Instance>(
+        &self,
+        bus: &mut I2cBus<'_, I>,
+        precision: Precision,
+    ) -> Result<u16> {
+        let data = self.0.measure(bus, precision).await?;
 
         // datasheet section 4.4
         let temp = &data[0..=1];
@@ -39,8 +44,8 @@ impl<I: Instance> Sts4x<'_, I> {
         Ok(temp_c)
     }
 
-    pub async fn serial_num(&mut self) -> Result<[u8; 4]> {
+    pub async fn serial_num<I: Instance>(&self, bus: &mut I2cBus<'_, I>) -> Result<[u8; 4]> {
         const READ_SERIAL_NUMBER: u8 = 0x89;
-        self.0.serial_num(READ_SERIAL_NUMBER).await
+        self.0.serial_num(bus, READ_SERIAL_NUMBER).await
     }
 }

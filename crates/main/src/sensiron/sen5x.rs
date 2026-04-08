@@ -1,11 +1,15 @@
 use byteorder::{BigEndian, ByteOrder};
 use crc::Crc;
 use dpia_lib::CRC_8_SENSIRON;
+use embassy_rp::i2c::Instance;
 use embassy_time::Timer;
 
 use super::generic::Result;
 
-use crate::{make_sensor, sensiron::sum_check};
+use crate::{
+    make_sensor,
+    sensiron::{generic::I2cBus, sum_check},
+};
 
 pub const ADDR: u8 = 0x69;
 
@@ -20,7 +24,7 @@ pub struct Measurement {
 }
 
 // sen5x uses big-endian, max size from the read serial number command in datasheet section 6.1.15
-impl<I: Instance> Sen5x<'_, I> {
+impl Sen5x {
     /// Read the measured values of the sensor.
     ///
     /// Note: this takes longer to run because we need to put the sensor in measurement mode,
@@ -29,24 +33,24 @@ impl<I: Instance> Sen5x<'_, I> {
     /// # Errors
     ///
     /// Will error if there is an I2c error.
-    pub async fn measure(&mut self) -> Result<Measurement> {
+    pub async fn measure<I: Instance>(&self, bus: &mut I2cBus<'_, I>) -> Result<Measurement> {
         // start measurement, takes 50 ms (datasheet 6.1)
-        self.0.write_cmd([0, 0x21]).await?;
+        self.0.write_cmd(bus, [0, 0x21]).await?;
         Timer::after_millis(50).await;
 
         // wait until measurement is ready
         loop {
-            if self.data_ready().await.is_ok_and(|r| r) {
+            if self.data_ready(bus).await.is_ok_and(|r| r) {
                 break;
             }
             Timer::after_secs(3).await;
         }
 
         // format: 2 bytes data, 1 byte crc, repeated for each measurement (24 bytes total)
-        let data = self.0.run_cmd([0x03, 0xC4]).await?;
+        let data = self.0.run_cmd(bus, [0x03, 0xC4]).await?;
 
         // stop measurement to save power (datasheet 6.1.3)
-        self.0.write_cmd([0x01, 0x04]).await?;
+        self.0.write_cmd(bus, [0x01, 0x04]).await?;
 
         let crc = Crc::<u8>::new(&CRC_8_SENSIRON);
 
@@ -75,9 +79,9 @@ impl<I: Instance> Sen5x<'_, I> {
         })
     }
 
-    async fn data_ready(&mut self) -> Result<bool> {
+    async fn data_ready<I: Instance>(&self, bus: &mut I2cBus<'_, I>) -> Result<bool> {
         // format: 1 unused byte, 1 byte data, 1 byte crc of bytes 0..=1
-        let data = self.0.run_cmd([0x02, 0x02]).await?;
+        let data = self.0.run_cmd(bus, [0x02, 0x02]).await?;
 
         let ready = &data[0..=1];
         let sum = data[2];
@@ -89,9 +93,9 @@ impl<I: Instance> Sen5x<'_, I> {
     }
 
     /// Returns the serial number of the sensor as an ascii buffer
-    pub async fn serial_num(&mut self) -> Result<[u8; 32]> {
+    pub async fn serial_num<I: Instance>(&self, bus: &mut I2cBus<'_, I>) -> Result<[u8; 32]> {
         // format: 2 bytes ascii, 1 byte checksum, ... repeated to byte 47
-        let data = self.0.run_cmd([0xD0, 0x33]).await?;
+        let data = self.0.run_cmd(bus, [0xD0, 0x33]).await?;
 
         let mut serial = [0; 32];
 
@@ -112,15 +116,10 @@ impl<I: Instance> Sen5x<'_, I> {
         Ok(serial)
     }
 
-    pub async fn reset(&mut self) -> Result<()> {
+    pub async fn reset<I: Instance>(&self, bus: &mut I2cBus<'_, I>) -> Result<()> {
         // reset command, takes 100 ms (datasheet 6.1)
-        self.0.write_cmd([0xD3, 0x04]).await?;
+        self.0.write_cmd(bus, [0xD3, 0x04]).await?;
         Timer::after_millis(100).await;
         Ok(())
-    }
-
-    /// use `reset` instead
-    pub async fn soft_reset(&mut self) -> ! {
-        unimplemented!("soft reset is not supported on sen5x, use reset instead")
     }
 }

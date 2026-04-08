@@ -8,6 +8,11 @@ use core::str::FromStr;
 use cyw43::{A4, Aligned, JoinOptions, ScanOptions};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use defmt::{info, unwrap};
+use dpia::sensiron::{
+    sen5x::{self, Sen5x},
+    sht4x::{Sht4x, model_addrs::SHT45_AD1B},
+    sts4x::{Sts4x, model_addrs::STS40_CD1B},
+};
 // use dpia::sensiron::{
 //     sen5x::{self, Sen5x},
 //     sht4x::{Sht4x, model_addrs::SHT40_AD1B},
@@ -28,7 +33,7 @@ use embassy_rp::{
     config::Config,
     dma,
     gpio::{Level, Output},
-    i2c,
+    i2c::{self, I2c},
     peripherals::{DMA_CH0, I2C0, I2C1, PIO0},
     pio::{self, Pio},
     spinlock_mutex::SpinlockRawMutex,
@@ -193,31 +198,22 @@ async fn main(spawner: Spawner) -> ! {
     // let address = control.address().await;
     // spawner.spawn(unwrap!(bt(bt_control, address)));
 
-    // TODO: do we need two i2c buses?
-    // let humidity = Sht4x::new(
-    //     p.I2C0,
-    //     p.PIN_1,
-    //     p.PIN_0,
-    //     Irqs,
-    //     i2c::Config::default(),
-    //     SHT40_AD1B,
-    // );
-    // let temp = Sts4x::new(
-    //     p.I2C0,
-    //     p.PIN_12,
-    //     p.PIN_13,
-    //     Irqs,
-    //     i2c::Config::default(),
-    //     STS40_AD1B,
-    // );
-    // let air = Sen5x::new(
-    //     p.I2C1,
-    //     p.PIN_11,
-    //     p.PIN_10,
-    //     Irqs,
-    //     i2c::Config::default(),
-    //     sen5x::ADDR,
-    // );
+    let mut i2c = I2c::new_async(p.I2C0, p.PIN_1, p.PIN_0, Irqs, i2c::Config::default());
+    defmt::info!("initialised i2c bus!");
+
+    let humidity = Sht4x::new(SHT45_AD1B);
+    let temp = Sts4x::new(STS40_CD1B);
+    let air = Sen5x::new(sen5x::ADDR);
+
+    let air_serial = air.serial_num(&mut i2c).await.unwrap();
+    let air_serial = str::from_utf8(&air_serial).unwrap_or("???");
+
+    defmt::info!(
+        "sht: {}, sts: {}, sen: {}",
+        humidity.serial_num(&mut i2c).await,
+        temp.serial_num(&mut i2c).await,
+        air_serial
+    );
 
     // POWER MANAGEMENT
     spawner.spawn(unwrap!(power_manager(p.POWMAN, client)));
