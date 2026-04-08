@@ -34,12 +34,13 @@ use embassy_rp::{
     dma,
     gpio::{Level, Output},
     i2c::{self, I2c},
-    peripherals::{DMA_CH0, I2C0, I2C1, PIO0},
+    peripherals::{DMA_CH0, DMA_CH1, I2C0, I2C1, PIO0},
     pio::{self, Pio},
     spinlock_mutex::SpinlockRawMutex,
 };
 use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
+use max7219::MAX7219;
 use reqwless::client::HttpClient;
 use static_cell::StaticCell;
 
@@ -59,7 +60,7 @@ bind_interrupts!(struct Irqs {
     PIO0_IRQ_0       => pio::InterruptHandler<PIO0>;
     I2C0_IRQ         => i2c::InterruptHandler<I2C0>;
     I2C1_IRQ         => i2c::InterruptHandler<I2C1>;
-    DMA_IRQ_0        => dma::InterruptHandler<DMA_CH0>;
+    DMA_IRQ_0        => dma::InterruptHandler<DMA_CH0>, dma::InterruptHandler<DMA_CH1>;
     POWMAN_IRQ_TIMER => aon_timer::InterruptHandler;
 });
 
@@ -198,6 +199,7 @@ async fn main(spawner: Spawner) -> ! {
     // let address = control.address().await;
     // spawner.spawn(unwrap!(bt(bt_control, address)));
 
+    // SENSORS
     let mut i2c = I2c::new_async(p.I2C0, p.PIN_1, p.PIN_0, Irqs, i2c::Config::default());
     defmt::info!("initialised i2c bus!");
 
@@ -214,6 +216,12 @@ async fn main(spawner: Spawner) -> ! {
         temp.serial_num(&mut i2c).await,
         air_serial
     );
+
+    let sck = Output::new(p.PIN_2, Level::Low);
+    let mosi = Output::new(p.PIN_3, Level::Low);
+    let cs = Output::new(p.PIN_4, Level::High);
+    let mut displays = MAX7219::from_pins(1, mosi, cs, sck).unwrap();
+    displays.write_integer(0, 676767).unwrap();
 
     // POWER MANAGEMENT
     spawner.spawn(unwrap!(power_manager(p.POWMAN, client)));
