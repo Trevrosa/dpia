@@ -200,7 +200,7 @@ async fn main(spawner: Spawner) -> ! {
     // spawner.spawn(unwrap!(bt(bt_control, address)));
 
     // SENSORS
-    let mut i2c = I2c::new_async(p.I2C0, p.PIN_1, p.PIN_0, Irqs, i2c::Config::default());
+    let mut i2c = I2c::new_async(p.I2C0, p.PIN_17, p.PIN_16, Irqs, i2c::Config::default());
     defmt::info!("initialised i2c bus!");
 
     let humidity = Sht4x::new(SHT45_AD1B);
