@@ -35,6 +35,8 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
         },
     );
 
+    info!("aon timer set up");
+
     timer.set_counter(sync_epoch_ms(&mut *client.lock().await).await);
     timer.start();
 

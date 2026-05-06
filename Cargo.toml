@@ -14,6 +14,6 @@ codegen-units = 1
 opt-level = 3
 
 [profile.dev]
-opt-level = "z"
-lto = "fat"
+opt-level = "s"
+lto = "thin"
 debug = "full"

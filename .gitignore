@@ -2,6 +2,8 @@
 /target/
 **/.idea
 
+/extra/
+
 __pycache__
 
 crates/main/config/*

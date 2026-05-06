@@ -41,7 +41,7 @@ use embassy_rp::{
 use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
 use max7219::MAX7219;
-use reqwless::client::HttpClient;
+use reqwless::client::{HttpClient, TlsConfig};
 use static_cell::StaticCell;
 
 use crate::tasks::{cyw43, net, power_manager};
@@ -74,19 +74,20 @@ async fn main(spawner: Spawner) -> ! {
     let p = embassy_rp::init(Config::default());
     let mut rng = RoscRng;
 
-    info!("Hello, World!");
+    info!("Hello, World!!");
 
-    // let fw = include_bytes!("../../../cyw43-firmware/43439A0.bin");
-    // let btfw = include_bytes!("../../../cyw43-firmware/43439A0_btfw.bin");
-    // let clm = include_bytes!("../../../cyw43-firmware/43439A0_clm.bin");
-    // defmt::info!("fw={} btfw={} clm={}", fw.len(), btfw.len(), clm.len());
+    // let fw = aligned_bytes!("../../../cyw43-firmware/43439A0.bin");
+    // let btfw = aligned_bytes!("../../../cyw43-firmware/43439A0_btfw.bin");
+    // let clm = aligned_bytes!("../../../cyw43-firmware/43439A0_clm.bin");
+    // let nvram = aligned_bytes!("../../../cyw43-firmware/nvram_rp2040.bin");
+    // defmt::info!("fw={} btfw={} clm={} nvram={}", fw.len(), btfw.len(), clm.len(), nvram.len());
 
     // cyw43 firmware can be flashed with `just prepare-cyw43`
     let fw: Aligned<A4, _> = unsafe { Aligned(*(0x101b_0000 as *const [u8; 231_077])) };
     let btfw: Aligned<A4, _> = unsafe { Aligned(*(0x101f_0000 as *const [u8; 6164])) };
     // "Country Locale Matrix"
-    let clm = unsafe { core::slice::from_raw_parts(0x101f_8000 as *const u8, 984) };
-    let nvram: Aligned<A4, _> = unsafe { Aligned(*(0x101f_8400 as *const [u8; 694])) };
+    let clm = unsafe { core::slice::from_raw_parts(0x101f_2000 as *const u8, 984) };
+    let nvram: Aligned<A4, _> = unsafe { Aligned(*(0x101f_4000 as *const [u8; 743])) };
 
     // OP wireless power on signal
     let pwr = Output::new(p.PIN_23, Level::Low);
@@ -119,7 +120,7 @@ async fn main(spawner: Spawner) -> ! {
     info!("scanning for wifi networks");
 
     let wanted_ssid = include_str!("../config/wanted_ssid");
-    let ssid_pass = include_str!("../config/ssid_pass").as_bytes();
+    let ssid_pass = include_bytes!("../config/ssid_pass");
 
     {
         let mut scanner = control.scan(ScanOptions::default()).await;
@@ -188,10 +189,26 @@ async fn main(spawner: Spawner) -> ! {
         .unwrap();
     info!("trevrosa.dev: {:?}", q);
 
+    // TLS
+    static TLS_R: StaticCell<[u8; 16640]> = StaticCell::new();
+    static TLS_W: StaticCell<[u8; 16640]> = StaticCell::new();
+    #[allow(clippy::large_stack_arrays)]
+    let tls_r = TLS_R.init_with(|| [0; _]);
+    #[allow(clippy::large_stack_arrays)]
+    let tls_w = TLS_W.init_with(|| [0; _]);
+
+    // no certificate verification but should be ok since we only request some domains
+    let tls_config = TlsConfig::new(seed, tls_r, tls_w, reqwless::client::TlsVerify::None);
+
     static TCP: StaticCell<TcpClient<'static, 3, 2048, 2048>> = StaticCell::new();
     static DNS: StaticCell<DnsSocket<'static>> = StaticCell::new();
     static CLIENT: StaticCell<HttpClientMutex> = StaticCell::new();
-    let client = CLIENT.init(Mutex::new(HttpClient::new(TCP.init(tcp), DNS.init(dns))));
+    let client = CLIENT.init(Mutex::new(HttpClient::new_with_tls(
+        TCP.init(tcp),
+        DNS.init(dns),
+        tls_config,
+    )));
+    info!("http client set up");
 
     // // BLUETOOTH
     // info!("starting bluetooth controller");

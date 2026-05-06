@@ -1,7 +1,8 @@
 #![no_std]
 
+use defmt::info;
 use embassy_net::{dns::DnsSocket, tcp::client::TcpClient};
-use reqwless::client::HttpClient;
+use reqwless::{client::HttpClient, request::Method};
 
 pub mod sensiron;
 
@@ -9,23 +10,26 @@ pub mod sensiron;
 pub async fn sync_epoch_ms(
     client: &mut HttpClient<'_, TcpClient<'_, 3, 2048, 2048>, DnsSocket<'_>>,
 ) -> u64 {
-    let mut cur_timestamp = [0u8; 35];
-    client
-        .request(
-            reqwless::request::Method::GET,
-            "https://timeapi.io/api/v1/time/current/unix_ms",
-        )
-        .await
-        .unwrap()
-        .send(&mut cur_timestamp)
+    info!("syncing time");
+
+    let mut rx_buf = [0u8; 1024];
+    let mut req = client
+        .request(Method::GET, "https://dpia.trevrosa.dev/time")
         .await
         .unwrap();
 
-    str::from_utf8(&cur_timestamp)
-        .unwrap()
-        .split(':')
-        .nth(1)
-        .unwrap()[..13] // unix ms is 13 digits
-        .parse::<u64>()
-        .unwrap()
+    let resp = req.send(&mut rx_buf).await.unwrap();
+    info!("got {}", resp.status);
+
+    let time = resp.body().read_to_end().await.unwrap();
+
+    // api returns just a string
+    let time = str::from_utf8(time)
+        .expect("must be utf8")
+        .parse()
+        .expect("must be a number");
+
+    info!("time is {}", time);
+
+    time
 }
