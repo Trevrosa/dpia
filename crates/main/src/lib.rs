@@ -2,11 +2,13 @@
 
 use defmt::info;
 use embassy_net::{dns::DnsSocket, tcp::client::TcpClient};
+use embassy_rp::aon_timer::DateTime;
+use heapless::{String, format};
 use reqwless::{client::HttpClient, request::Method};
 
 pub mod sensiron;
 
-/// use timeapi.io to get the current unix epoch in ms
+/// use our api to get millis since unix epoch (corrected to our timezone)
 pub async fn sync_epoch_ms(
     client: &mut HttpClient<'_, TcpClient<'_, 3, 2048, 2048>, DnsSocket<'_>>,
 ) -> u64 {
@@ -29,7 +31,34 @@ pub async fn sync_epoch_ms(
         .parse()
         .expect("must be a number");
 
-    info!("time is {}", time);
+    info!("synced time is {}", time);
 
     time
+}
+
+/// saturday, midnight
+pub fn next_weekend(mut now: DateTime) -> DateTime {
+    let day_of_week = now.day_of_week as u8;
+
+    assert!(matches!(day_of_week, 1..=5));
+
+    // saturday is 6, today is monday-friday (1..=5), so 6-today is always positive
+    // what if next weekend is in next month (day >= 31)? should be ok if no chrono
+    now.day += 6 - day_of_week;
+
+    now.hour = 0;
+    now.minute = 0;
+    now.second = 0;
+
+    now
+}
+
+// max should be 35
+pub fn debug_datetime(dt: &DateTime) -> String<40> {
+    let timestamp = dt.timestamp_millis().expect("should be past the epoch");
+    format!(
+        "{}-{}-{} {:02}:{:02}:{:02} ({})",
+        dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, timestamp
+    )
+    .unwrap()
 }

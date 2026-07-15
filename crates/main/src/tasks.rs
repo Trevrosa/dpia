@@ -1,8 +1,9 @@
 use cyw43_pio::PioSpi;
 use defmt::info;
-use dpia::sync_epoch_ms;
+use dpia::{debug_datetime, next_weekend, sync_epoch_ms};
 use embassy_rp::{
-    Peri, aon_timer,
+    Peri,
+    aon_timer::{self, DayOfWeek},
     clocks::dormant_sleep,
     gpio::Output,
     peripherals::{PIO0, POWMAN},
@@ -37,47 +38,57 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
 
     info!("aon timer set up");
 
+    // timer starts stopped
     timer.set_counter(sync_epoch_ms(&mut *client.lock().await).await);
     timer.start();
 
     // if we start on a weekday, wait until the weekend to start sleeping, else start immediately
-    let now = timer.now_as_datetime().unwrap();
+    let now = timer.now_as_datetime().expect("year should be valid");
+    info!("it is now {}", debug_datetime(&now));
     if matches!(now.day_of_week as u8, 1..=5) {
         info!("it's a weekday, waiting for saturday to sleep");
 
-        let mut weekend = now;
-        weekend.day_of_week = aon_timer::DayOfWeek::Saturday;
-        weekend.hour = 0;
-        weekend.minute = 0;
+        let weekend = next_weekend(now);
 
-        info!("waiting for {:?}", weekend.timestamp_millis());
-        timer.set_alarm_at_datetime(weekend).unwrap();
+        info!("waiting for {}", debug_datetime(&weekend));
+        timer
+            .set_alarm_at_datetime(weekend)
+            .expect("dt should be in the future");
         timer.wait_for_alarm().await;
     }
 
     info!("it's a weekend, sleeping now");
 
     loop {
+        let now = timer.now_as_datetime().expect("year should be valid");
+        let days = if now.day_of_week == DayOfWeek::Saturday {
+            2
+        } else {
+            1
+        };
+
         // it should now be saturday 00:00, sleep until next monday 6:00
         timer
-            .set_alarm_after(Duration::from_secs((2 * 60 * 60 * 24) + (6 * 60 * 60)))
+            .set_alarm_after(Duration::from_secs((days * 60 * 60 * 24) + (6 * 60 * 60)))
             .unwrap();
 
-        dormant_sleep();
+        info!("pretending to sleep");
+        // dormant_sleep();
 
-        // it should now be monday 6:00, sleep until saturday 00:00
+        // it should now be monday 6:00, wait until saturday 00:00
         info!("woke up, syncing time");
         timer.stop();
         timer.set_counter(sync_epoch_ms(&mut *client.lock().await).await);
         timer.start();
 
-        let mut weekend = timer.now_as_datetime().unwrap();
-        weekend.day_of_week = aon_timer::DayOfWeek::Saturday;
-        weekend.hour = 0;
-        weekend.minute = 0;
+        let now = timer.now_as_datetime().expect("year should be valid");
+        info!("it is now {}", debug_datetime(&now));
+        let weekend = next_weekend(now);
 
-        info!("waiting for {:?}", weekend.timestamp_millis());
-        timer.set_alarm_at_datetime(weekend).unwrap();
+        info!("waiting for {}", debug_datetime(&weekend));
+        timer
+            .set_alarm_at_datetime(weekend)
+            .expect("dt should be in future");
         timer.wait_for_alarm().await;
     }
 }

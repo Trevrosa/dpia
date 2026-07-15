@@ -120,7 +120,7 @@ async fn main(spawner: Spawner) -> ! {
     info!("scanning for wifi networks");
 
     let wanted_ssid = include_str!("../config/wanted_ssid");
-    let ssid_pass = include_bytes!("../config/ssid_pass");
+    let ssid_pass = include_str!("../config/ssid_pass");
 
     {
         let mut scanner = control.scan(ScanOptions::default()).await;
@@ -144,7 +144,7 @@ async fn main(spawner: Spawner) -> ! {
             defmt::panic!("couldnt join wifi in 5 tries");
         }
 
-        let join = control.join(wanted_ssid, JoinOptions::new(ssid_pass)).await;
+        let join = control.join(wanted_ssid, JoinOptions::new(ssid_pass.as_bytes())).await;
 
         if join.is_ok() {
             break;
@@ -216,29 +216,29 @@ async fn main(spawner: Spawner) -> ! {
     // let address = control.address().await;
     // spawner.spawn(unwrap!(bt(bt_control, address)));
 
-    // SENSORS
-    let mut i2c = I2c::new_async(p.I2C0, p.PIN_17, p.PIN_16, Irqs, i2c::Config::default());
-    defmt::info!("initialised i2c bus!");
+    // // SENSORS
+    // let mut i2c = I2c::new_async(p.I2C0, p.PIN_17, p.PIN_16, Irqs, i2c::Config::default());
+    // defmt::info!("initialised i2c bus!");
 
-    let humidity = Sht4x::new(SHT45_AD1B);
-    let temp = Sts4x::new(STS40_CD1B);
-    let air = Sen5x::new(sen5x::ADDR);
+    // let humidity = Sht4x::new(SHT45_AD1B);
+    // let temp = Sts4x::new(STS40_CD1B);
+    // let air = Sen5x::new(sen5x::ADDR);
 
-    let air_serial = air.serial_num(&mut i2c).await.unwrap();
-    let air_serial = str::from_utf8(&air_serial).unwrap_or("???");
+    // let air_serial = air.serial_num(&mut i2c).await.unwrap();
+    // let air_serial = str::from_utf8(&air_serial).unwrap_or("???");
 
-    defmt::info!(
-        "sht: {}, sts: {}, sen: {}",
-        humidity.serial_num(&mut i2c).await,
-        temp.serial_num(&mut i2c).await,
-        air_serial
-    );
+    // defmt::info!(
+    //     "sht: {}, sts: {}, sen: {}",
+    //     humidity.serial_num(&mut i2c).await,
+    //     temp.serial_num(&mut i2c).await,
+    //     air_serial
+    // );
 
-    let sck = Output::new(p.PIN_2, Level::Low);
-    let mosi = Output::new(p.PIN_3, Level::Low);
-    let cs = Output::new(p.PIN_4, Level::High);
-    let mut displays = MAX7219::from_pins(1, mosi, cs, sck).unwrap();
-    displays.write_integer(0, 676767).unwrap();
+    // let sck = Output::new(p.PIN_2, Level::Low);
+    // let mosi = Output::new(p.PIN_3, Level::Low);
+    // let cs = Output::new(p.PIN_4, Level::High);
+    // let mut displays = MAX7219::from_pins(1, mosi, cs, sck).unwrap();
+    // displays.write_integer(0, 676767).unwrap();
 
     // POWER MANAGEMENT
     spawner.spawn(unwrap!(power_manager(p.POWMAN, client)));
