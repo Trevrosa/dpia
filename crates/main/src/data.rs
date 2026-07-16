@@ -11,6 +11,8 @@ use reqwless::request::Method;
 
 use crate::tasks::{RpI2C0Async, RpMax7219};
 
+// FIXME: could use <https://crates.io/crates/ufmt>
+
 pub fn show_data(data: &SensorData, displays: &mut RpMax7219<'static>) {
     let len = if let Some(air_temp) = data.air_temp {
         let (air_temp, dots, len) = fmt_f32_for_display(air_temp);

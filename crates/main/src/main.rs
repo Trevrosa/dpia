@@ -9,19 +9,12 @@ use core::str::FromStr;
 use cyw43::{A4, Aligned, JoinOptions, ScanOptions};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use defmt::{info, unwrap};
-use dpia::{
-    HttpClientMutex,
-    sensiron::{
-        sen5x::{self, Sen5x},
-        sht4x::{Sht4x, model_addrs::SHT45_AD1B},
-        sts4x::{Sts4x, model_addrs::STS40_CD1B},
-    },
+use dpia::HttpClientMutex;
+use dpia::sensiron::{
+    sen5x::{self, Sen5x},
+    sht4x::{Sht4x, model_addrs::SHT45_AD1B},
+    sts4x::{Sts4x, model_addrs::STS40_CD1B},
 };
-// use dpia::sensiron::{
-//     sen5x::{self, Sen5x},
-//     sht4x::{Sht4x, model_addrs::SHT40_AD1B},
-//     sts4x::{Sts4x, model_addrs::STS40_AD1B},
-// };
 use embassy_executor::Spawner;
 use embassy_futures::yield_now;
 use embassy_net::{

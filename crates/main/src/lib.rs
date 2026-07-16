@@ -48,13 +48,14 @@ pub async fn sync_epoch_ms(client: &'static HttpClientMutex) -> u64 {
 }
 
 pub fn fmt_f32_for_display(f: f32) -> (String<8>, u8, usize) {
+    debug_assert!(f <= 100.0);
+
     let mut s = format!(8; "{f:.1}").unwrap();
 
     let len_before = s.len();
 
-    if len_before < 8 {
-        pad(&mut s, ' ', 8 - len_before);
-    }
+    // len_before should be <= 5 and must be <=8
+    pad(&mut s, ' ', 8 - len_before);
 
     // there must be 1 decimal point. including the dot, minus 2
     // 3 <= len_before <= 8, (min of 0.0, max defined by capacity)

@@ -8,7 +8,6 @@ use dpia::{
 use embassy_rp::{
     Peri,
     aon_timer::{self, DayOfWeek},
-    clocks::dormant_sleep,
     gpio::Output,
     i2c::{self, I2c},
     peripherals::{I2C0, PIO0, POWMAN},
@@ -81,10 +80,16 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
             .set_alarm_after(Duration::from_secs((days * 60 * 60 * 24) + (6 * 60 * 60)))
             .unwrap();
 
-        info!("sleeping soon");
-        Timer::after_secs(3).await;
-        info!("sleeping now");
-        dormant_sleep();
+        #[cfg(feature = "no-sleep")]
+        info!("pretending to sleep");
+        
+        #[cfg(not(feature = "no-sleep"))]
+        {
+            info!("sleeping soon");
+            Timer::after_secs(3).await;
+            info!("sleeping now");
+            embassy_rp::clocks::dormant_sleep();
+        }
 
         // it should now be monday 6:00, wait until saturday 00:00
         info!("woke up, syncing time");
