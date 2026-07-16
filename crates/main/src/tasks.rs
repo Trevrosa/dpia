@@ -1,16 +1,25 @@
 use cyw43_pio::PioSpi;
-use defmt::info;
-use dpia::{debug_datetime, next_weekend, sync_epoch_ms};
+use defmt::{error, info};
+use dpia::{
+    HttpClientMutex, debug_datetime, next_weekend,
+    sensiron::{sen5x::Sen5x, sht4x::Sht4x, sts4x::Sts4x},
+    sync_epoch_ms,
+};
 use embassy_rp::{
     Peri,
     aon_timer::{self, DayOfWeek},
     clocks::dormant_sleep,
     gpio::Output,
-    peripherals::{PIO0, POWMAN},
+    i2c::{self, I2c},
+    peripherals::{I2C0, PIO0, POWMAN},
 };
-use embassy_time::Duration;
+use embassy_time::{Duration, Timer};
+use max7219::MAX7219;
 
-use crate::{HttpClientMutex, Irqs};
+use crate::{
+    Irqs,
+    data::{collect, show_data, submit},
+};
 
 #[embassy_executor::task]
 pub async fn cyw43(
@@ -39,7 +48,7 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
     info!("aon timer set up");
 
     // timer starts stopped
-    timer.set_counter(sync_epoch_ms(&mut *client.lock().await).await);
+    timer.set_counter(sync_epoch_ms(client).await);
     timer.start();
 
     // if we start on a weekday, wait until the weekend to start sleeping, else start immediately
@@ -72,13 +81,15 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
             .set_alarm_after(Duration::from_secs((days * 60 * 60 * 24) + (6 * 60 * 60)))
             .unwrap();
 
-        info!("pretending to sleep");
-        // dormant_sleep();
+        info!("sleeping soon");
+        Timer::after_secs(3).await;
+        info!("sleeping now");
+        dormant_sleep();
 
         // it should now be monday 6:00, wait until saturday 00:00
         info!("woke up, syncing time");
         timer.stop();
-        timer.set_counter(sync_epoch_ms(&mut *client.lock().await).await);
+        timer.set_counter(sync_epoch_ms(client).await);
         timer.start();
 
         let now = timer.now_as_datetime().expect("year should be valid");
@@ -90,6 +101,35 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
             .set_alarm_at_datetime(weekend)
             .expect("dt should be in future");
         timer.wait_for_alarm().await;
+    }
+}
+
+pub type RpMax7219<'a> =
+    MAX7219<max7219::connectors::PinConnector<Output<'a>, Output<'a>, Output<'a>>>;
+pub type RpI2C0Async = I2c<'static, I2C0, i2c::Async>;
+
+#[embassy_executor::task]
+pub async fn data_collector(
+    mut i2c: RpI2C0Async,
+    humid: Sht4x,
+    temp: Sts4x,
+    air: Sen5x,
+    mut displays: RpMax7219<'static>,
+    client: &'static HttpClientMutex,
+) -> ! {
+    let mut do_everything = async || {
+        let data = collect(&mut i2c, humid, temp, air).await;
+        if let Err(err) = submit(client, &data).await {
+            error!("failed to submit: {}", err);
+        }
+        show_data(&data, &mut displays);
+    };
+
+    do_everything().await;
+
+    loop {
+        Timer::after_secs(30).await;
+        do_everything().await;
     }
 }
 

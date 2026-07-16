@@ -37,19 +37,19 @@ macro_rules! concat_bytes {
 // SHT4x_5: section 4.5, eq (1)
 /// Returns in %RH.
 #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-pub fn signal_to_rh(data: u16) -> u16 {
+pub fn signal_to_rh(data: u16) -> u8 {
     // use f32 for fractional precision
     let rh = 125.0 * (f32::from(data) / f32::from(u16::MAX)) - 6.0;
-    rh.clamp(0.0, 100.0) as u16
+    rh.clamp(0.0, 100.0) as u8
 }
 
 // SHT4x_5: section 4.5, eq (2). equation is same as in STS4x datasheet.
 /// Returns in degrees celcius.
 #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
-pub fn signal_to_temp(data: u16) -> u16 {
+pub fn signal_to_temp(data: u16) -> f32 {
     // use f32 for fractional precision
     let temp = 175.0 * (f32::from(data) / f32::from(u16::MAX)) - 45.0;
-    temp.clamp(0.0, 100.0) as u16
+    temp.clamp(0.0, 100.0)
 }
 
 #[cfg(test)]

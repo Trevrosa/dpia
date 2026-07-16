@@ -9,6 +9,7 @@ macro_rules! make_sensor {
         use super::generic::Sensor;
 
         #[doc = $doc]
+        #[derive(Clone, Copy)]
         pub struct $name(Sensor<$max_size>);
 
         impl $name {

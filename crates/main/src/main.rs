@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+pub mod data;
 mod tasks;
 
 use core::str::FromStr;
@@ -8,10 +9,13 @@ use core::str::FromStr;
 use cyw43::{A4, Aligned, JoinOptions, ScanOptions};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use defmt::{info, unwrap};
-use dpia::sensiron::{
-    sen5x::{self, Sen5x},
-    sht4x::{Sht4x, model_addrs::SHT45_AD1B},
-    sts4x::{Sts4x, model_addrs::STS40_CD1B},
+use dpia::{
+    HttpClientMutex,
+    sensiron::{
+        sen5x::{self, Sen5x},
+        sht4x::{Sht4x, model_addrs::SHT45_AD1B},
+        sts4x::{Sts4x, model_addrs::STS40_CD1B},
+    },
 };
 // use dpia::sensiron::{
 //     sen5x::{self, Sen5x},
@@ -36,7 +40,6 @@ use embassy_rp::{
     i2c::{self, I2c},
     peripherals::{DMA_CH0, DMA_CH1, I2C0, I2C1, PIO0},
     pio::{self, Pio},
-    spinlock_mutex::SpinlockRawMutex,
 };
 use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
@@ -44,7 +47,7 @@ use max7219::MAX7219;
 use reqwless::client::{HttpClient, TlsConfig};
 use static_cell::StaticCell;
 
-use crate::tasks::{cyw43, net, power_manager};
+use crate::tasks::{cyw43, data_collector, net, power_manager};
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -63,11 +66,6 @@ bind_interrupts!(struct Irqs {
     DMA_IRQ_0        => dma::InterruptHandler<DMA_CH0>, dma::InterruptHandler<DMA_CH1>;
     POWMAN_IRQ_TIMER => aon_timer::InterruptHandler;
 });
-
-type HttpClientMutex = Mutex<
-    SpinlockRawMutex<0>,
-    HttpClient<'static, TcpClient<'static, 3, 2048, 2048>, DnsSocket<'static>>,
->;
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) -> ! {
@@ -144,7 +142,9 @@ async fn main(spawner: Spawner) -> ! {
             defmt::panic!("couldnt join wifi in 5 tries");
         }
 
-        let join = control.join(wanted_ssid, JoinOptions::new(ssid_pass.as_bytes())).await;
+        let join = control
+            .join(wanted_ssid, JoinOptions::new(ssid_pass.as_bytes()))
+            .await;
 
         if join.is_ok() {
             break;
@@ -216,29 +216,35 @@ async fn main(spawner: Spawner) -> ! {
     // let address = control.address().await;
     // spawner.spawn(unwrap!(bt(bt_control, address)));
 
-    // // SENSORS
-    // let mut i2c = I2c::new_async(p.I2C0, p.PIN_17, p.PIN_16, Irqs, i2c::Config::default());
-    // defmt::info!("initialised i2c bus!");
+    // SENSORS
+    let mut i2c: I2c<'_, I2C0, i2c::Async> =
+        I2c::new_async(p.I2C0, p.PIN_17, p.PIN_16, Irqs, i2c::Config::default());
+    defmt::info!("initialised i2c bus!");
 
-    // let humidity = Sht4x::new(SHT45_AD1B);
-    // let temp = Sts4x::new(STS40_CD1B);
-    // let air = Sen5x::new(sen5x::ADDR);
+    let humidity = Sht4x::new(SHT45_AD1B);
+    let temp = Sts4x::new(STS40_CD1B);
+    let air = Sen5x::new(sen5x::ADDR);
 
-    // let air_serial = air.serial_num(&mut i2c).await.unwrap();
-    // let air_serial = str::from_utf8(&air_serial).unwrap_or("???");
+    let air_serial = air.serial_num(&mut i2c).await.unwrap();
+    let air_serial = str::from_utf8(&air_serial).unwrap_or("???");
 
-    // defmt::info!(
-    //     "sht: {}, sts: {}, sen: {}",
-    //     humidity.serial_num(&mut i2c).await,
-    //     temp.serial_num(&mut i2c).await,
-    //     air_serial
-    // );
+    defmt::info!(
+        "sht: {}, sts: {}, sen: {}",
+        humidity.serial_num(&mut i2c).await,
+        temp.serial_num(&mut i2c).await,
+        air_serial
+    );
 
-    // let sck = Output::new(p.PIN_2, Level::Low);
-    // let mosi = Output::new(p.PIN_3, Level::Low);
-    // let cs = Output::new(p.PIN_4, Level::High);
-    // let mut displays = MAX7219::from_pins(1, mosi, cs, sck).unwrap();
-    // displays.write_integer(0, 676767).unwrap();
+    // DISPLAY
+    let sck = Output::new(p.PIN_2, Level::Low);
+    let mosi = Output::new(p.PIN_3, Level::Low);
+    let cs = Output::new(p.PIN_4, Level::High);
+    let mut displays = MAX7219::from_pins(2, mosi, cs, sck).unwrap();
+    displays.write_integer(0, 67).unwrap();
+
+    spawner.spawn(unwrap!(data_collector(
+        i2c, humidity, temp, air, displays, client
+    )));
 
     // POWER MANAGEMENT
     spawner.spawn(unwrap!(power_manager(p.POWMAN, client)));

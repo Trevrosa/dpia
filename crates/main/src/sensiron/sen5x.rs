@@ -17,10 +17,10 @@ make_sensor!(Sen5x, "the `SEN5x` particulate matter sensor", 48);
 
 #[derive(defmt::Format)]
 pub struct Measurement {
-    pm10: u16,
-    pm2_5: u16,
-    voc: u16,
-    nox: u16,
+    pub pm10: u16,
+    pub pm2_5: u16,
+    pub voc: u16,
+    pub nox: u16,
 }
 
 // sen5x uses big-endian, max size from the read serial number command in datasheet section 6.1.15

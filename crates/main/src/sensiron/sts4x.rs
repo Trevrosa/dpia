@@ -27,7 +27,7 @@ impl Sts4x {
         &self,
         bus: &mut I2cBus<'_, I>,
         precision: Precision,
-    ) -> Result<u16> {
+    ) -> Result<f32> {
         let data = self.0.measure(bus, precision).await?;
 
         // datasheet section 4.4
