@@ -124,6 +124,7 @@ pub async fn data_collector(
 ) -> ! {
     let mut do_everything = async || {
         let data = collect(&mut i2c, humid, temp, air).await;
+        info!("got data: {:?}", data);
         if let Err(err) = submit(client, &data).await {
             error!("failed to submit: {}", err);
         }

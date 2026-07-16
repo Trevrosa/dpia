@@ -38,6 +38,7 @@ pub fn show_data(data: &SensorData, displays: &mut RpMax7219<'static>) {
     }
 }
 
+#[derive(defmt::Format)]
 pub struct SensorData {
     air_temp: Option<f32>,
     ground_temp: Option<f32>,
@@ -53,16 +54,19 @@ pub async fn collect(i2c: &mut RpI2C0Async, humid: Sht4x, temp: Sts4x, air: Sen5
         error!("failed to measure: {}", err);
     };
 
+    info!("measuring with sht4x");
     let sht = humid
         .measure(i2c, Precision::Medium)
         .await
         .inspect_err(log_err)
         .ok();
+    info!("measuring with sts4x");
     let ground_temp = temp
         .measure(i2c, Precision::Medium)
         .await
         .inspect_err(log_err)
         .ok();
+    info!("measuring with sen5x");
     let air = air.measure(i2c).await.inspect_err(log_err).ok();
 
     SensorData {
