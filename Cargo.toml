@@ -15,5 +15,4 @@ opt-level = 3
 
 [profile.dev]
 opt-level = "s"
-lto = "thin"
 debug = "full"
