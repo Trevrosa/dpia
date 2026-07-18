@@ -655,6 +655,7 @@ name = "dpia-lib"
 version = "0.1.0"
 dependencies = [
  "crc",
+ "heapless 0.9.3",
 ]
 
 [[package]]

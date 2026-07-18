@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 crc = "3.3.0"
+heapless = "0.9.3"

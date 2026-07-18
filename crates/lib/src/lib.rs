@@ -2,6 +2,8 @@
 
 use crc::Algorithm;
 
+pub mod display;
+
 // STS4x section 4.3, same for SHT4x
 /// The CRC-8 algorithm Sensiron uses (at least for the `STS4x` and `SHT4x` and `SEN5x`).
 pub const CRC_8_SENSIRON: Algorithm<u8> = Algorithm {

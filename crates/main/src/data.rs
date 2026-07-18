@@ -2,9 +2,10 @@ use core::fmt::Write;
 
 use defmt::{error, info, warn};
 use dpia::{
-    HttpClientMutex, fmt_f32_for_display, pad_u8_for_display,
+    HttpClientMutex,
     sensiron::{generic::Precision, sen5x::Sen5x, sht4x::Sht4x, sts4x::Sts4x},
 };
+use dpia_lib::display::{fmt_f32, fmt_pad_u8};
 use embassy_rp::i2c;
 use heapless::String;
 use reqwless::request::Method;
@@ -15,20 +16,20 @@ use crate::tasks::{RpI2C0Async, RpMax7219};
 
 pub fn show_data(data: &SensorData, displays: &mut RpMax7219<'static>) {
     let len = if let Some(air_temp) = data.air_temp {
-        let (air_temp, dots, len) = fmt_f32_for_display(air_temp);
+        let (air_temp, dots, len) = fmt_f32(air_temp);
         let air_temp = air_temp.as_bytes().try_into().expect("we set it to len 8");
         if displays.write_str(0, air_temp, dots).is_err() {
             warn!("failed to show temp digits");
         }
 
-        Some(len)
+        len
     } else {
         warn!("no temp to show");
-        None
+        3
     };
 
     if let Some(humidity) = data.humidity {
-        let humidity = pad_u8_for_display(humidity, len);
+        let humidity = fmt_pad_u8(humidity, Some(len));
         let humidity = humidity.as_bytes().try_into().expect("we set it to len 8");
         if displays.write_str(0, humidity, 0).is_err() {
             warn!("failed to show humidity digits");
