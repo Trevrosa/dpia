@@ -23,7 +23,7 @@ pub fn fmt_f32(f: f32) -> (String<8>, u8, usize) {
     // write from the left, so:
     // 7 - dist = 5
     // 0b0010_0000
-    let dots = 1 << 7 - (len_before - 3);
+    let dots = 1 << (7 - (len_before - 3));
 
     (s, dots, len_before)
 }
@@ -139,7 +139,7 @@ mod tests {
     fn bad_after_u8() {
         fmt_pad_u8(10, Some(7));
     }
-    
+
     #[test]
     #[should_panic]
     fn big_u8() {

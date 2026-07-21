@@ -3,7 +3,7 @@ use defmt::{error, info};
 use dpia::{
     HttpClientMutex, debug_datetime, next_weekend,
     sensiron::{sen5x::Sen5x, sht4x::Sht4x, sts4x::Sts4x},
-    sync_epoch_ms,
+    sync_epoch_ms, try_forever,
 };
 use embassy_rp::{
     Peri,
@@ -47,7 +47,7 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
     info!("aon timer set up");
 
     // timer starts stopped
-    timer.set_counter(sync_epoch_ms(client).await);
+    timer.set_counter(try_forever(|| sync_epoch_ms(client), Duration::from_secs(2)).await);
     timer.start();
 
     // if we start on a weekday, wait until the weekend to start sleeping, else start immediately
@@ -82,7 +82,7 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
 
         #[cfg(feature = "no-sleep")]
         info!("pretending to sleep");
-        
+
         #[cfg(not(feature = "no-sleep"))]
         {
             info!("sleeping soon");
@@ -94,7 +94,7 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
         // it should now be monday 6:00, wait until saturday 00:00
         info!("woke up, syncing time");
         timer.stop();
-        timer.set_counter(sync_epoch_ms(client).await);
+        timer.set_counter(try_forever(|| sync_epoch_ms(client), Duration::from_secs(2)).await);
         timer.start();
 
         let now = timer.now_as_datetime().expect("year should be valid");
@@ -119,16 +119,19 @@ pub async fn data_collector(
     humid: Sht4x,
     temp: Sts4x,
     air: Sen5x,
-    mut displays: RpMax7219<'static>,
+    mut displays: Option<RpMax7219<'static>>,
     client: &'static HttpClientMutex,
 ) -> ! {
     let mut do_everything = async || {
+        info!("collecting");
         let data = collect(&mut i2c, humid, temp, air).await;
         info!("got data: {:?}", data);
         if let Err(err) = submit(client, &data).await {
             error!("failed to submit: {}", err);
         }
-        show_data(&data, &mut displays);
+        if let Some(ref mut displays) = displays {
+            show_data(&data, displays);
+        }
     };
 
     do_everything().await;

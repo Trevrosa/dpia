@@ -15,7 +15,7 @@ use crate::{
     },
 };
 
-make_sensor!(Sts4x, "the `STS4x` temperature sensor", 6);
+make_sensor!(Sts4x, "the `STS4x` temperature sensor");
 
 impl Sts4x {
     /// Returns the temperature in degrees celsius.
@@ -28,7 +28,7 @@ impl Sts4x {
         bus: &mut I2cBus<'_, I>,
         precision: Precision,
     ) -> Result<f32> {
-        let data = self.0.measure(bus, precision).await?;
+        let data: [u8; 3] = self.0.measure(bus, precision).await?;
 
         // datasheet section 4.4
         let temp = &data[0..=1];

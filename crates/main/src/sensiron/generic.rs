@@ -10,7 +10,7 @@ use crate::sensiron::sum_check;
 ///
 /// `MAX_SIZE` is the max size (in bytes) of the return data (e.g. `6` for `SHT4x` and `STS4x`).
 #[derive(Clone, Copy)]
-pub struct Sensor<const MAX_SIZE: usize> {
+pub struct Sensor {
     addr: u8,
 }
 
@@ -18,7 +18,7 @@ pub type Result<T> = core::result::Result<T, i2c::Error>;
 
 pub type I2cBus<'a, I> = I2c<'a, I, Async>;
 
-impl<const MAX_SIZE: usize> Sensor<MAX_SIZE> {
+impl Sensor {
     /// Create a new sensor instance.
     pub fn new(addr: u8) -> Self {
         Self { addr }
@@ -26,15 +26,17 @@ impl<const MAX_SIZE: usize> Sensor<MAX_SIZE> {
 
     /// Send a command to the sensor and get its response.
     ///
+    /// `RESULT_SIZE` is in bytes.
+    ///
     /// # Errors
     ///
     /// Will error if there is an I2c error.
-    pub(super) async fn run_cmd<I: i2c::Instance>(
+    pub(super) async fn run_cmd<I: i2c::Instance, const RESULT_SIZE: usize>(
         &self,
         bus: &mut I2cBus<'_, I>,
         cmd: [u8; 2],
-    ) -> Result<[u8; MAX_SIZE]> {
-        let mut result = [0; MAX_SIZE];
+    ) -> Result<[u8; RESULT_SIZE]> {
+        let mut result = [0; RESULT_SIZE];
         bus.write_read_async(self.addr, cmd, &mut result).await?;
         Ok(result)
     }
@@ -52,11 +54,11 @@ impl<const MAX_SIZE: usize> Sensor<MAX_SIZE> {
     /// # Errors
     ///
     /// Will error if there is an I2c error.
-    pub async fn measure<I: i2c::Instance>(
+    pub async fn measure<I: i2c::Instance, const RESULT_SIZE: usize>(
         &self,
         bus: &mut I2cBus<'_, I>,
         precision: Precision,
-    ) -> Result<[u8; MAX_SIZE]> {
+    ) -> Result<[u8; RESULT_SIZE]> {
         let cmd = precision.cmd();
         self.run_cmd(bus, [0, cmd]).await
     }
@@ -71,12 +73,7 @@ impl<const MAX_SIZE: usize> Sensor<MAX_SIZE> {
         bus: &mut I2cBus<'_, I>,
         cmd: u8,
     ) -> Result<[u8; 4]> {
-        let data = self.run_cmd(bus, [0, cmd]).await?;
-
-        assert!(
-            MAX_SIZE >= 6,
-            "MAX_SIZE must be at least 6 to read the serial number"
-        );
+        let data: [u8; 6] = self.run_cmd(bus, [0, cmd]).await?;
 
         let serial = &data[0..=1];
         let sum = data[2];

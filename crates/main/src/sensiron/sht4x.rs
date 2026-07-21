@@ -22,7 +22,7 @@ pub struct Measurement {
     pub temperature: f32,
 }
 
-make_sensor!(Sht4x, "the `SHT4x` temperature-and-humidty sensor", 6);
+make_sensor!(Sht4x, "the `SHT4x` temperature-and-humidty sensor");
 
 impl Sht4x {
     /// Returns the relative humidity as a % and temperature in degrees celsius.
@@ -35,7 +35,7 @@ impl Sht4x {
         bus: &mut I2cBus<'_, I>,
         precision: Precision,
     ) -> Result<Measurement> {
-        let data = self.0.measure(bus, precision).await?;
+        let data: [u8; 6] = self.0.measure(bus, precision).await?;
 
         // datasheet section 4.5
         let temp = &data[0..=1];

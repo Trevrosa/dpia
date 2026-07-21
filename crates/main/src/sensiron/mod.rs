@@ -5,12 +5,12 @@ pub mod sts4x;
 
 #[macro_export]
 macro_rules! make_sensor {
-    ($name:ident, $doc:expr, $max_size:expr) => {
+    ($name:ident, $doc:expr) => {
         use super::generic::Sensor;
 
         #[doc = $doc]
         #[derive(Clone, Copy)]
-        pub struct $name(Sensor<$max_size>);
+        pub struct $name(Sensor);
 
         impl $name {
             pub fn new(addr: u8) -> Self {

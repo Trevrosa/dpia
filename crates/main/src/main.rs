@@ -8,11 +8,11 @@ use core::str::FromStr;
 
 use cyw43::{A4, Aligned, JoinOptions, ScanOptions};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
-use defmt::{info, unwrap};
+use defmt::{error, info, unwrap};
 use dpia::HttpClientMutex;
 use dpia::sensiron::{
     sen5x::{self, Sen5x},
-    sht4x::{Sht4x, model_addrs::SHT45_AD1B},
+    sht4x::{Sht4x, model_addrs::SHT40_AD1B},
     sts4x::{Sts4x, model_addrs::STS40_CD1B},
 };
 use embassy_executor::Spawner;
@@ -139,7 +139,9 @@ async fn main(spawner: Spawner) -> ! {
             .join(wanted_ssid, JoinOptions::new(ssid_pass.as_bytes()))
             .await;
 
-        if join.is_ok() {
+        if let Err(err) = join {
+            error!("failed to join: {}", err);
+        } else {
             break;
         }
 
@@ -210,15 +212,16 @@ async fn main(spawner: Spawner) -> ! {
     // spawner.spawn(unwrap!(bt(bt_control, address)));
 
     // SENSORS
+    let i2c_config = i2c::Config::default();
     let mut i2c: I2c<'_, I2C0, i2c::Async> =
-        I2c::new_async(p.I2C0, p.PIN_17, p.PIN_16, Irqs, i2c::Config::default());
+        I2c::new_async(p.I2C0, p.PIN_17, p.PIN_16, Irqs, i2c_config);
     defmt::info!("initialised i2c bus!");
 
-    let humidity = Sht4x::new(SHT45_AD1B);
+    let humidity = Sht4x::new(SHT40_AD1B);
     let temp = Sts4x::new(STS40_CD1B);
     let air = Sen5x::new(sen5x::ADDR);
 
-    let air_serial = air.serial_num(&mut i2c).await.unwrap();
+    let air_serial = air.serial_num(&mut i2c).await.unwrap_or_default();
     let air_serial = str::from_utf8(&air_serial).unwrap_or("???");
 
     defmt::info!(
@@ -232,9 +235,12 @@ async fn main(spawner: Spawner) -> ! {
     let sck = Output::new(p.PIN_2, Level::Low);
     let mosi = Output::new(p.PIN_3, Level::Low);
     let cs = Output::new(p.PIN_4, Level::High);
-    let mut displays = MAX7219::from_pins(2, mosi, cs, sck).unwrap();
-    displays.write_integer(0, 67).unwrap();
+    let displays = MAX7219::from_pins(2, mosi, cs, sck).ok();
+    if displays.is_none() {
+        error!("failed to init max7219");
+    }
 
+    // DATA COLLECTION
     spawner.spawn(unwrap!(data_collector(
         i2c, humidity, temp, air, displays, client
     )));

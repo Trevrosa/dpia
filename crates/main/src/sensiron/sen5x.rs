@@ -13,7 +13,7 @@ use crate::{
 
 pub const ADDR: u8 = 0x69;
 
-make_sensor!(Sen5x, "the `SEN5x` particulate matter sensor", 48);
+make_sensor!(Sen5x, "the `SEN5x` particulate matter sensor");
 
 #[derive(defmt::Format)]
 pub struct Measurement {
@@ -47,7 +47,7 @@ impl Sen5x {
         }
 
         // format: 2 bytes data, 1 byte crc, repeated for each measurement (24 bytes total)
-        let data = self.0.run_cmd(bus, [0x03, 0xC4]).await?;
+        let data: [u8; 24] = self.0.run_cmd(bus, [0x03, 0xC4]).await?;
 
         // stop measurement to save power (datasheet 6.1.3)
         self.0.write_cmd(bus, [0x01, 0x04]).await?;
@@ -81,7 +81,7 @@ impl Sen5x {
 
     async fn data_ready<I: Instance>(&self, bus: &mut I2cBus<'_, I>) -> Result<bool> {
         // format: 1 unused byte, 1 byte data, 1 byte crc of bytes 0..=1
-        let data = self.0.run_cmd(bus, [0x02, 0x02]).await?;
+        let data: [u8; 3] = self.0.run_cmd(bus, [0x02, 0x02]).await?;
 
         let ready = &data[0..=1];
         let sum = data[2];
@@ -94,8 +94,8 @@ impl Sen5x {
 
     /// Returns the serial number of the sensor as an ascii buffer
     pub async fn serial_num<I: Instance>(&self, bus: &mut I2cBus<'_, I>) -> Result<[u8; 32]> {
-        // format: 2 bytes ascii, 1 byte checksum, ... repeated to byte 47
-        let data = self.0.run_cmd(bus, [0xD0, 0x33]).await?;
+        // format: 2 bytes ascii, 1 byte checksum, ... repeated to byte 48
+        let data: [u8; 48] = self.0.run_cmd(bus, [0xD0, 0x33]).await?;
 
         let mut serial = [0; 32];
 

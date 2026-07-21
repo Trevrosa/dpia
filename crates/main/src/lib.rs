@@ -1,11 +1,12 @@
 #![no_std]
 
-use defmt::info;
+use defmt::{error, info, warn};
 use embassy_net::{dns::DnsSocket, tcp::client::TcpClient};
 use embassy_rp::{aon_timer::DateTime, spinlock_mutex::SpinlockRawMutex};
 use embassy_sync::mutex::Mutex;
+use embassy_time::{Duration, Timer};
 use heapless::{String, format};
-use reqwless::{client::HttpClient, request::Method};
+use reqwless::{client::HttpClient, request::Method, response::StatusCode};
 
 pub mod sensiron;
 
@@ -14,8 +15,39 @@ pub type HttpClientMutex = Mutex<
     HttpClient<'static, TcpClient<'static, 3, 2048, 2048>, DnsSocket<'static>>,
 >;
 
+/// Run a future that returns a [`Result`] until it returns [`Ok`] with a `delay` between tries.
+pub async fn try_forever<T, E, F>(f: impl Fn() -> F, delay: Duration) -> T
+where
+    E: defmt::Format,
+    F: Future<Output = Result<T, E>>,
+{
+    let mut i = 1;
+    loop {
+        match f().await {
+            Ok(res) => break res,
+            Err(err) => error!("failed: {}", err),
+        }
+
+        i += 1;
+        warn!("try #{}", i);
+        Timer::after(delay).await;
+    }
+}
+
+#[derive(defmt::Format)]
+pub enum SyncError {
+    Reqwless(reqwless::Error),
+    HttpError(StatusCode),
+}
+
+impl From<reqwless::Error> for SyncError {
+    fn from(value: reqwless::Error) -> Self {
+        Self::Reqwless(value)
+    }
+}
+
 /// use our api to get millis since unix epoch (corrected to our timezone)
-pub async fn sync_epoch_ms(client: &'static HttpClientMutex) -> u64 {
+pub async fn sync_epoch_ms(client: &'static HttpClientMutex) -> Result<u64, SyncError> {
     info!("syncing time");
 
     let client = &mut *client.lock().await;
@@ -23,13 +55,16 @@ pub async fn sync_epoch_ms(client: &'static HttpClientMutex) -> u64 {
     let mut rx_buf = [0u8; 1024];
     let mut req = client
         .request(Method::GET, "https://dpia.trevrosa.dev/time")
-        .await
-        .unwrap();
+        .await?;
 
-    let resp = req.send(&mut rx_buf).await.unwrap();
+    let resp = req.send(&mut rx_buf).await?;
     info!("got {}", resp.status);
 
-    let time = resp.body().read_to_end().await.unwrap();
+    if !resp.status.is_successful() {
+        return Err(SyncError::HttpError(resp.status));
+    }
+
+    let time = resp.body().read_to_end().await?;
 
     // api returns just a string
     let time = str::from_utf8(time)
@@ -39,7 +74,7 @@ pub async fn sync_epoch_ms(client: &'static HttpClientMutex) -> u64 {
 
     info!("synced time is {}", time);
 
-    time
+    Ok(time)
 }
 
 /// saturday, midnight
