@@ -39,15 +39,27 @@ pub fn show_data(data: &SensorData, displays: &mut RpMax7219<'static>) {
     }
 }
 
-#[derive(defmt::Format)]
+#[derive(defmt::Format, Default)]
 pub struct SensorData {
-    air_temp: Option<f32>,
-    ground_temp: Option<f32>,
-    humidity: Option<u8>,
-    nox: Option<u16>,
-    voc: Option<u16>,
-    pm10: Option<u16>,
-    pm2_5: Option<u16>,
+    pub air_temp: Option<f32>,
+    pub ground_temp: Option<f32>,
+    pub humidity: Option<u8>,
+    pub nox: Option<u16>,
+    pub voc: Option<u16>,
+    pub pm10: Option<u16>,
+    pub pm2_5: Option<u16>,
+}
+
+impl SensorData {
+    pub fn write_from(&mut self, src: &Self) {
+        self.air_temp = src.air_temp;
+        self.ground_temp = src.ground_temp;
+        self.humidity = src.humidity;
+        self.nox = src.nox;
+        self.voc = src.voc;
+        self.pm10 = src.pm10;
+        self.pm2_5 = src.pm2_5;
+    }
 }
 
 pub async fn collect(i2c: &mut RpI2C0Async, humid: Sht4x, temp: Sts4x, air: Sen5x) -> SensorData {

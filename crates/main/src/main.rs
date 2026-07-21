@@ -1,11 +1,13 @@
 #![no_std]
 #![no_main]
 
+mod bt;
 pub mod data;
 mod tasks;
 
 use core::str::FromStr;
 
+use cyw43::bluetooth::BtDriver;
 use cyw43::{A4, Aligned, JoinOptions, ScanOptions};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use defmt::{error, info, unwrap};
@@ -22,6 +24,7 @@ use embassy_net::{
     dns::DnsSocket,
     tcp::client::{TcpClient, TcpClientState},
 };
+use embassy_rp::spinlock_mutex::SpinlockRawMutex;
 use embassy_rp::{
     aon_timer,
     binary_info::{EntryAddr, rp_cargo_version, rp_program_build_attribute, rp_program_name},
@@ -39,8 +42,10 @@ use embassy_time::Timer;
 use max7219::MAX7219;
 use reqwless::client::{HttpClient, TlsConfig};
 use static_cell::StaticCell;
+use trouble_host::prelude::ExternalController;
 
-use crate::tasks::{cyw43, data_collector, net, power_manager};
+use crate::data::SensorData;
+use crate::tasks::{ble, cyw43, data_collector, net, power_manager};
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -54,11 +59,13 @@ pub static PICOTOOL_ENTRIES: [EntryAddr; 3] = [
 
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0       => pio::InterruptHandler<PIO0>;
+    DMA_IRQ_0        => dma::InterruptHandler<DMA_CH0>, dma::InterruptHandler<DMA_CH1>;
     I2C0_IRQ         => i2c::InterruptHandler<I2C0>;
     I2C1_IRQ         => i2c::InterruptHandler<I2C1>;
-    DMA_IRQ_0        => dma::InterruptHandler<DMA_CH0>, dma::InterruptHandler<DMA_CH1>;
     POWMAN_IRQ_TIMER => aon_timer::InterruptHandler;
 });
+
+pub type GlobalSensorDataMutex = Mutex<SpinlockRawMutex<1>, SensorData>;
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) -> ! {
@@ -102,7 +109,7 @@ async fn main(spawner: Spawner) -> ! {
     static CYW43_STATE: StaticCell<cyw43::State> = StaticCell::new();
     let cyw43_state = CYW43_STATE.init(cyw43::State::new());
 
-    let (net_dev, _bt_dev, mut control, runner) =
+    let (net_dev, bt_dev, mut control, runner) =
         cyw43::new_with_bluetooth(cyw43_state, pwr, spi, &fw, &btfw, &nvram).await;
     spawner.spawn(unwrap!(cyw43(runner)));
     control.init(clm).await;
@@ -205,11 +212,13 @@ async fn main(spawner: Spawner) -> ! {
     )));
     info!("http client set up");
 
-    // // BLUETOOTH
-    // info!("starting bluetooth controller");
-    // let bt_control: ExternalController<BtDriver, 10> = ExternalController::new(bt_dev);
-    // let address = control.address().await;
-    // spawner.spawn(unwrap!(bt(bt_control, address)));
+    // BLUETOOTH
+    static GLOBAL_SENSOR_DATA: StaticCell<GlobalSensorDataMutex> = StaticCell::new();
+    let global_sensor_data = GLOBAL_SENSOR_DATA.init(Mutex::new(SensorData::default()));
+    info!("starting bluetooth controller");
+    let bt_control: ExternalController<BtDriver, 10> = ExternalController::new(bt_dev);
+    let address = control.address().await;
+    spawner.spawn(unwrap!(ble(bt_control, address, global_sensor_data)));
 
     // SENSORS
     let i2c_config = i2c::Config::default();
@@ -242,7 +251,13 @@ async fn main(spawner: Spawner) -> ! {
 
     // DATA COLLECTION
     spawner.spawn(unwrap!(data_collector(
-        i2c, humidity, temp, air, displays, client
+        i2c,
+        humidity,
+        temp,
+        air,
+        displays,
+        client,
+        global_sensor_data
     )));
 
     // POWER MANAGEMENT

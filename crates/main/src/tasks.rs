@@ -1,3 +1,4 @@
+use cyw43::bluetooth::BtDriver;
 use cyw43_pio::PioSpi;
 use defmt::{error, info};
 use dpia::{
@@ -5,6 +6,7 @@ use dpia::{
     sensiron::{sen5x::Sen5x, sht4x::Sht4x, sts4x::Sts4x},
     sync_epoch_ms, try_forever,
 };
+use embassy_futures::join::join;
 use embassy_rp::{
     Peri,
     aon_timer::{self, DayOfWeek},
@@ -14,9 +16,14 @@ use embassy_rp::{
 };
 use embassy_time::{Duration, Timer};
 use max7219::MAX7219;
+use trouble_host::{
+    Address, HostResources,
+    gap::{GapConfig, PeripheralConfig},
+    prelude::{DefaultPacketPool, ExternalController, appearance},
+};
 
 use crate::{
-    Irqs,
+    GlobalSensorDataMutex, Irqs, bt,
     data::{collect, show_data, submit},
 };
 
@@ -44,7 +51,7 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
         },
     );
 
-    info!("aon timer set up");
+    info!("[pwr] aon timer set up");
 
     // timer starts stopped
     timer.set_counter(try_forever(|| sync_epoch_ms(client), Duration::from_secs(2)).await);
@@ -52,20 +59,20 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
 
     // if we start on a weekday, wait until the weekend to start sleeping, else start immediately
     let now = timer.now_as_datetime().expect("year should be valid");
-    info!("it is now {}", debug_datetime(&now));
+    info!("[pwr] it is now {}", debug_datetime(&now));
     if matches!(now.day_of_week as u8, 1..=5) {
-        info!("it's a weekday, waiting for saturday to sleep");
+        info!("[pwr] it's a weekday, waiting for saturday to sleep");
 
         let weekend = next_weekend(now);
 
-        info!("waiting for {}", debug_datetime(&weekend));
+        info!("[pwr] waiting for {}", debug_datetime(&weekend));
         timer
             .set_alarm_at_datetime(weekend)
             .expect("dt should be in the future");
         timer.wait_for_alarm().await;
     }
 
-    info!("it's a weekend, sleeping now");
+    info!("[pwr] it's a weekend, sleeping now");
 
     loop {
         let now = timer.now_as_datetime().expect("year should be valid");
@@ -81,27 +88,27 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
             .unwrap();
 
         #[cfg(feature = "no-sleep")]
-        info!("pretending to sleep");
+        info!("[pwr] pretending to sleep");
 
         #[cfg(not(feature = "no-sleep"))]
         {
-            info!("sleeping soon");
+            info!("[pwr] sleeping soon");
             Timer::after_secs(3).await;
-            info!("sleeping now");
+            info!("[pwr] sleeping now");
             embassy_rp::clocks::dormant_sleep();
         }
 
         // it should now be monday 6:00, wait until saturday 00:00
-        info!("woke up, syncing time");
+        info!("[pwr] woke up, syncing time");
         timer.stop();
         timer.set_counter(try_forever(|| sync_epoch_ms(client), Duration::from_secs(2)).await);
         timer.start();
 
         let now = timer.now_as_datetime().expect("year should be valid");
-        info!("it is now {}", debug_datetime(&now));
+        info!("[pwr] it is now {}", debug_datetime(&now));
         let weekend = next_weekend(now);
 
-        info!("waiting for {}", debug_datetime(&weekend));
+        info!("[pwr] waiting for {}", debug_datetime(&weekend));
         timer
             .set_alarm_at_datetime(weekend)
             .expect("dt should be in future");
@@ -121,11 +128,16 @@ pub async fn data_collector(
     air: Sen5x,
     mut displays: Option<RpMax7219<'static>>,
     client: &'static HttpClientMutex,
+    global_data: &'static GlobalSensorDataMutex,
 ) -> ! {
     let mut do_everything = async || {
         info!("collecting");
         let data = collect(&mut i2c, humid, temp, air).await;
         info!("got data: {:?}", data);
+        {
+            let global_data = &mut *global_data.lock().await;
+            global_data.write_from(&data);
+        }
         if let Err(err) = submit(client, &data).await {
             error!("failed to submit: {}", err);
         }
@@ -142,7 +154,33 @@ pub async fn data_collector(
     }
 }
 
-// #[embassy_executor::task]
-// pub async fn bt(controller: ExternalController<BtDriver<'static>, 10>, address: [u8; 6]) {
-//     peripheral(controller, address).await;
-// }
+#[embassy_executor::task]
+pub async fn ble(
+    controller: ExternalController<BtDriver<'static>, 10>,
+    address: [u8; 6],
+    global: &'static GlobalSensorDataMutex,
+) {
+    const CONNECTIONS: usize = 1;
+    const L2CAP_CHANNELS: usize = 2; // signalling + gatt
+    const ADV_SETS: usize = 1;
+
+    let mut resources: HostResources<DefaultPacketPool, CONNECTIONS, L2CAP_CHANNELS, ADV_SETS> =
+        HostResources::new();
+    let address = Address::random(address);
+    let stack = trouble_host::new(controller, &mut resources).set_random_address(address);
+    let mut stack = stack.build();
+
+    info!("starting advertising and GATT service");
+
+    let server = bt::Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
+        name: "dpia",
+        appearance: &appearance::sensor::MULTI_SENSOR,
+    }))
+    .unwrap();
+
+    join(
+        crate::bt::ble_task(stack.runner),
+        crate::bt::server_loop(&mut stack.peripheral, &server, global),
+    )
+    .await;
+}
