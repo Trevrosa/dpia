@@ -4,13 +4,19 @@ run: build
 # use a release build
 run-rel: build-rel
     probe-rs run --chip RP235x target/thumbv8m.main-none-eabihf/release/dpia
-# run with a debug build, assuming it's already flashed
+# reset, then run with a debug build, assuming it's already flashed
 attach:
     probe-rs reset --chip RP235x
     probe-rs attach --chip RP235x target/thumbv8m.main-none-eabihf/debug/dpia
-# run with a release build, assuming it's already flashed
+# reset, then run with a release build, assuming it's already flashed
 attach-rel:
     probe-rs reset --chip RP235x
+    probe-rs attach --chip RP235x target/thumbv8m.main-none-eabihf/release/dpia
+# run with a debug build, assuming it's already flashed
+reattach:
+    probe-rs attach --chip RP235x target/thumbv8m.main-none-eabihf/debug/dpia
+# run with a release build, assuming it's already flashed
+reattach-rel:
     probe-rs attach --chip RP235x target/thumbv8m.main-none-eabihf/release/dpia
 # flash the cyw43 firmware
 prepare-cyw43:

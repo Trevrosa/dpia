@@ -1,4 +1,7 @@
 #![no_std]
+#![allow(clippy::must_use_candidate)]
+
+use core::num::ParseIntError;
 
 use defmt::{error, info, warn};
 use embassy_net::{dns::DnsSocket, tcp::client::TcpClient};
@@ -38,6 +41,7 @@ where
 pub enum SyncError {
     Reqwless(reqwless::Error),
     HttpError(StatusCode),
+    ParseError,
 }
 
 impl From<reqwless::Error> for SyncError {
@@ -46,9 +50,20 @@ impl From<reqwless::Error> for SyncError {
     }
 }
 
+impl From<ParseIntError> for SyncError {
+    fn from(_value: ParseIntError) -> Self {
+        Self::ParseError
+    }
+}
+
 /// use our api to get millis since unix epoch (corrected to our timezone)
+///
+/// # Errors
+///
+/// Fails if the request failed to be sent, if the response status was not successful, or if the response failed to be parsed as an int.
+#[expect(clippy::missing_panics_doc, reason = "panics are only from .expect()s")]
 pub async fn sync_epoch_ms(client: &'static HttpClientMutex) -> Result<u64, SyncError> {
-    info!("syncing time");
+    info!("[sync] syncing time");
 
     let client = &mut *client.lock().await;
 
@@ -58,7 +73,7 @@ pub async fn sync_epoch_ms(client: &'static HttpClientMutex) -> Result<u64, Sync
         .await?;
 
     let resp = req.send(&mut rx_buf).await?;
-    info!("got {}", resp.status);
+    info!("[sync] got {}", resp.status);
 
     if !resp.status.is_successful() {
         return Err(SyncError::HttpError(resp.status));
@@ -67,17 +82,18 @@ pub async fn sync_epoch_ms(client: &'static HttpClientMutex) -> Result<u64, Sync
     let time = resp.body().read_to_end().await?;
 
     // api returns just a string
-    let time = str::from_utf8(time)
-        .expect("must be utf8")
-        .parse()
-        .expect("must be a number");
+    let time = str::from_utf8(time).expect("must be utf8").parse()?;
 
-    info!("synced time is {}", time);
+    info!("[sync] synced time is {}", time);
 
     Ok(time)
 }
 
 /// saturday, midnight
+///
+/// # Panics
+///
+/// Fails if the `now` is in the weekend.
 pub fn next_weekend(mut now: DateTime) -> DateTime {
     let day_of_week = now.day_of_week as u8;
 
@@ -95,6 +111,11 @@ pub fn next_weekend(mut now: DateTime) -> DateTime {
 }
 
 // max should be 35
+
+#[expect(
+    clippy::missing_panics_doc,
+    reason = "dt should reasonably be past the unix epoch"
+)]
 pub fn debug_datetime(dt: &DateTime) -> String<40> {
     let timestamp = dt.timestamp_millis().expect("should be past the epoch");
     format!(

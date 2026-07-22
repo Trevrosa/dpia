@@ -1,4 +1,5 @@
 #![cfg_attr(not(test), no_std)]
+#![allow(clippy::must_use_candidate)]
 
 use crc::Algorithm;
 

@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![allow(clippy::must_use_candidate)]
 
 mod bt;
 pub mod data;
@@ -105,7 +106,7 @@ async fn main(spawner: Spawner) -> ! {
 
     info!("wifi pio and pins set up");
 
-    // WIFI
+    // WIRELESS
     static CYW43_STATE: StaticCell<cyw43::State> = StaticCell::new();
     let cyw43_state = CYW43_STATE.init(cyw43::State::new());
 
@@ -115,6 +116,16 @@ async fn main(spawner: Spawner) -> ! {
     control.init(clm).await;
 
     info!("cyw43 set up");
+
+    // BLUETOOTH
+    static GLOBAL_SENSOR_DATA: StaticCell<GlobalSensorDataMutex> = StaticCell::new();
+    let global_sensor_data = GLOBAL_SENSOR_DATA.init(Mutex::new(SensorData::default()));
+    info!("starting bluetooth controller");
+    let bt_control: ExternalController<BtDriver, 10> = ExternalController::new(bt_dev);
+    let address = control.address().await;
+    spawner.spawn(unwrap!(ble(bt_control, address, global_sensor_data)));
+
+    // WIFI
     info!("scanning for wifi networks");
 
     let wanted_ssid = include_str!("../config/wanted_ssid");
@@ -137,9 +148,10 @@ async fn main(spawner: Spawner) -> ! {
     }
 
     info!("joining `{}`", wanted_ssid);
-    for i in 0..=5 {
-        if i == 5 {
-            defmt::panic!("couldnt join wifi in 5 tries");
+    const WIFI_JOIN_TRIES: usize = 8;
+    for i in 0..=WIFI_JOIN_TRIES {
+        if i == WIFI_JOIN_TRIES {
+            defmt::panic!("couldnt join wifi in {} tries", WIFI_JOIN_TRIES);
         }
 
         let join = control
@@ -212,19 +224,13 @@ async fn main(spawner: Spawner) -> ! {
     )));
     info!("http client set up");
 
-    // BLUETOOTH
-    static GLOBAL_SENSOR_DATA: StaticCell<GlobalSensorDataMutex> = StaticCell::new();
-    let global_sensor_data = GLOBAL_SENSOR_DATA.init(Mutex::new(SensorData::default()));
-    info!("starting bluetooth controller");
-    let bt_control: ExternalController<BtDriver, 10> = ExternalController::new(bt_dev);
-    let address = control.address().await;
-    spawner.spawn(unwrap!(ble(bt_control, address, global_sensor_data)));
-
     // SENSORS
-    let i2c_config = i2c::Config::default();
+    let mut i2c_config = i2c::Config::default();
+    i2c_config.scl_pullup = false;
+    i2c_config.sda_pullup = false;
     let mut i2c: I2c<'_, I2C0, i2c::Async> =
         I2c::new_async(p.I2C0, p.PIN_17, p.PIN_16, Irqs, i2c_config);
-    defmt::info!("initialised i2c bus!");
+    info!("initialised i2c bus!");
 
     let humidity = Sht4x::new(SHT40_AD1B);
     let temp = Sts4x::new(STS40_CD1B);

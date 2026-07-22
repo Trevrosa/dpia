@@ -14,17 +14,20 @@ use crate::tasks::{RpI2C0Async, RpMax7219};
 
 // FIXME: could use <https://crates.io/crates/ufmt>
 
+#[expect(
+    clippy::missing_panics_doc,
+    reason = "panics only come from .expect()s"
+)]
 pub fn show_data(data: &SensorData, displays: &mut RpMax7219<'static>) {
     let len = if let Some(air_temp) = data.air_temp {
         let (air_temp, dots, len) = fmt_f32(air_temp);
         let air_temp = air_temp.as_bytes().try_into().expect("we set it to len 8");
         if displays.write_str(0, air_temp, dots).is_err() {
-            warn!("failed to show temp digits");
+            warn!("[data] failed to show temp digits");
         }
 
         len
     } else {
-        warn!("no temp to show");
         3
     };
 
@@ -32,14 +35,12 @@ pub fn show_data(data: &SensorData, displays: &mut RpMax7219<'static>) {
         let humidity = fmt_pad_u8(humidity, Some(len));
         let humidity = humidity.as_bytes().try_into().expect("we set it to len 8");
         if displays.write_str(0, humidity, 0).is_err() {
-            warn!("failed to show humidity digits");
+            warn!("[data] failed to show humidity digits");
         }
-    } else {
-        warn!("no humidity to show");
     }
 }
 
-#[derive(defmt::Format, Default)]
+#[derive(defmt::Format, Default, Clone, Copy)]
 pub struct SensorData {
     pub air_temp: Option<f32>,
     pub ground_temp: Option<f32>,
@@ -50,36 +51,24 @@ pub struct SensorData {
     pub pm2_5: Option<u16>,
 }
 
-impl SensorData {
-    pub fn write_from(&mut self, src: &Self) {
-        self.air_temp = src.air_temp;
-        self.ground_temp = src.ground_temp;
-        self.humidity = src.humidity;
-        self.nox = src.nox;
-        self.voc = src.voc;
-        self.pm10 = src.pm10;
-        self.pm2_5 = src.pm2_5;
-    }
-}
-
 pub async fn collect(i2c: &mut RpI2C0Async, humid: Sht4x, temp: Sts4x, air: Sen5x) -> SensorData {
     let log_err = |err: &i2c::Error| {
-        error!("failed to measure: {}", err);
+        error!("[data] failed to measure: {}", err);
     };
 
-    info!("measuring with sht4x");
+    info!("[data] measuring with sht4x");
     let sht = humid
         .measure(i2c, Precision::Medium)
         .await
         .inspect_err(log_err)
         .ok();
-    info!("measuring with sts4x");
+    info!("[data] measuring with sts4x");
     let ground_temp = temp
         .measure(i2c, Precision::Medium)
         .await
         .inspect_err(log_err)
         .ok();
-    info!("measuring with sen5x");
+    info!("[data] measuring with sen5x");
     let air = air.measure(i2c).await.inspect_err(log_err).ok();
 
     SensorData {
@@ -93,13 +82,18 @@ pub async fn collect(i2c: &mut RpI2C0Async, humid: Sht4x, temp: Sts4x, air: Sen5
     }
 }
 
+/// Submit `data` with a `client`.
+///
+/// # Errors
+///
+/// Fails if the request fails to send
 pub async fn submit(
     client: &'static HttpClientMutex,
     data: &SensorData,
 ) -> Result<(), reqwless::Error> {
     let client = &mut *client.lock().await;
 
-    info!("submitting data");
+    info!("[data] submitting data");
 
     let query = data_to_query(data);
 
@@ -107,7 +101,7 @@ pub async fn submit(
     let mut req = client.request(Method::POST, query.as_str()).await?;
 
     let resp = req.send(&mut rx_buf).await?;
-    info!("got {}", resp.status);
+    info!("[data] got {}", resp.status);
 
     Ok(())
 }

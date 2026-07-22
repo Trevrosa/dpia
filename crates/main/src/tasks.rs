@@ -136,7 +136,7 @@ pub async fn data_collector(
         info!("got data: {:?}", data);
         {
             let global_data = &mut *global_data.lock().await;
-            global_data.write_from(&data);
+            *global_data = data;
         }
         if let Err(err) = submit(client, &data).await {
             error!("failed to submit: {}", err);
@@ -168,7 +168,7 @@ pub async fn ble(
         HostResources::new();
     let address = Address::random(address);
     let stack = trouble_host::new(controller, &mut resources).set_random_address(address);
-    let mut stack = stack.build();
+    let stack = stack.build();
 
     info!("starting advertising and GATT service");
 
@@ -180,7 +180,7 @@ pub async fn ble(
 
     join(
         crate::bt::ble_task(stack.runner),
-        crate::bt::server_loop(&mut stack.peripheral, &server, global),
+        crate::bt::server_loop(stack.peripheral, &server, global),
     )
     .await;
 }

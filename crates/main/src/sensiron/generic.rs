@@ -2,7 +2,8 @@
 
 use crc::Crc;
 use dpia_lib::{CRC_8_SENSIRON, concat_bytes};
-use embassy_rp::i2c::{self, Async, I2c};
+use embassy_time::{Duration, Timer};
+use embedded_hal_async::i2c;
 
 use crate::sensiron::sum_check;
 
@@ -13,10 +14,6 @@ use crate::sensiron::sum_check;
 pub struct Sensor {
     addr: u8,
 }
-
-pub type Result<T> = core::result::Result<T, i2c::Error>;
-
-pub type I2cBus<'a, I> = I2c<'a, I, Async>;
 
 impl Sensor {
     /// Create a new sensor instance.
@@ -31,22 +28,25 @@ impl Sensor {
     /// # Errors
     ///
     /// Will error if there is an I2c error.
-    pub(super) async fn run_cmd<I: i2c::Instance, const RESULT_SIZE: usize>(
+    pub(super) async fn run_cmd<I: i2c::I2c, const RESULT_SIZE: usize>(
         &self,
-        bus: &mut I2cBus<'_, I>,
-        cmd: [u8; 2],
-    ) -> Result<[u8; RESULT_SIZE]> {
+        bus: &mut I,
+        cmd: impl Into<u16>,
+        read_delay: Option<Duration>,
+    ) -> Result<[u8; RESULT_SIZE], I::Error> {
         let mut result = [0; RESULT_SIZE];
-        bus.write_read_async(self.addr, cmd, &mut result).await?;
+        bus.write(self.addr, &cmd.into().to_be_bytes()).await?;
+        Timer::after(read_delay.unwrap_or_default()).await;
+        bus.read(self.addr, &mut result).await?;
         Ok(result)
     }
 
-    pub(super) async fn write_cmd<I: i2c::Instance>(
+    pub(super) async fn write_cmd<I: i2c::I2c>(
         &self,
-        bus: &mut I2cBus<'_, I>,
-        cmd: [u8; 2],
-    ) -> Result<()> {
-        bus.write_async(self.addr, cmd).await
+        bus: &mut I,
+        cmd: impl Into<u16>,
+    ) -> Result<(), I::Error> {
+        bus.write(self.addr, &cmd.into().to_be_bytes()).await
     }
 
     /// Run the measure command with the provided [`Precision`] and get its response. (only works for `SHT4x` and `STS4x`)
@@ -54,13 +54,13 @@ impl Sensor {
     /// # Errors
     ///
     /// Will error if there is an I2c error.
-    pub async fn measure<I: i2c::Instance, const RESULT_SIZE: usize>(
+    pub(super) async fn measure<I: i2c::I2c, const RESULT_SIZE: usize>(
         &self,
-        bus: &mut I2cBus<'_, I>,
+        bus: &mut I,
         precision: Precision,
-    ) -> Result<[u8; RESULT_SIZE]> {
+    ) -> Result<[u8; RESULT_SIZE], I::Error> {
         let cmd = precision.cmd();
-        self.run_cmd(bus, [0, cmd]).await
+        self.run_cmd(bus, cmd, Some(precision.timing())).await
     }
 
     /// Read the serial number of the sensor. (sht4x and sts4x only)
@@ -68,12 +68,12 @@ impl Sensor {
     /// # Errors
     ///
     /// Will error if there is an I2c error.
-    pub async fn serial_num<I: i2c::Instance>(
+    pub(super) async fn serial_num<I: i2c::I2c>(
         &self,
-        bus: &mut I2cBus<'_, I>,
+        bus: &mut I,
         cmd: u8,
-    ) -> Result<[u8; 4]> {
-        let data: [u8; 6] = self.run_cmd(bus, [0, cmd]).await?;
+    ) -> Result<u32, I::Error> {
+        let data: [u8; 6] = self.run_cmd(bus, cmd, None).await?;
 
         let serial = &data[0..=1];
         let sum = data[2];
@@ -87,7 +87,7 @@ impl Sensor {
 
         let combined = concat_bytes!(serial, serial1, 4);
 
-        Ok(combined)
+        Ok(u32::from_be_bytes(combined))
     }
 
     /// Tell the sensor to soft-reset.
@@ -95,10 +95,10 @@ impl Sensor {
     /// # Errors
     ///
     /// Will error if there is an I2c error.
-    pub async fn soft_reset<I: i2c::Instance>(&self, bus: &mut I2cBus<'_, I>) -> Result<()> {
+    pub async fn soft_reset<I: i2c::I2c>(&self, bus: &mut I) -> Result<(), I::Error> {
         const SOFT_RESET: u8 = 0x94;
         // special command, only ACKs, so no return data
-        self.write_cmd(bus, [0, SOFT_RESET]).await
+        self.write_cmd(bus, SOFT_RESET).await
         // TODO: wait a bit here?
     }
 
@@ -114,11 +114,22 @@ pub enum Precision {
 
 impl Precision {
     /// The corresponding i2c command.
-    pub fn cmd(self) -> u8 {
+    pub fn cmd(&self) -> u8 {
+        // datasheet section 4.4
         match self {
             Precision::High => 0xFD,
             Precision::Medium => 0xF6,
             Precision::Low => 0xE0,
         }
+    }
+
+    /// The max time it takes for a measurement at the corresponding precision.
+    pub fn timing(&self) -> Duration {
+        // datasheet section 3.1
+        Duration::from_micros(match self {
+            Precision::High => 8300,
+            Precision::Medium => 4500,
+            Precision::Low => 1600,
+        })
     }
 }

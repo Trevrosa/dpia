@@ -49,6 +49,11 @@ pub fn fmt_pad_u8(u: u8, after: Option<usize>) -> String<8> {
     s
 }
 
+/// Append character `char`, `num` times to string `s`.
+///
+/// # Panics
+///
+/// Fails if the string does not have the capacity for `num` additional chars.
 pub fn pad<LenT, S>(s: &mut StringInner<LenT, S>, char: char, num: usize)
 where
     LenT: LenType,

@@ -2,17 +2,14 @@
 
 pub mod model_addrs;
 
-use byteorder::{ByteOrder, LittleEndian};
+use byteorder::{BigEndian, ByteOrder};
 use crc::Crc;
 use dpia_lib::{CRC_8_SENSIRON, signal_to_rh, signal_to_temp};
-use embassy_rp::i2c::Instance;
+use embedded_hal_async::i2c;
 
 use crate::{
     make_sensor,
-    sensiron::{
-        generic::{I2cBus, Precision, Result},
-        sum_check,
-    },
+    sensiron::{generic::Precision, sum_check},
 };
 
 #[derive(defmt::Format)]
@@ -30,11 +27,11 @@ impl Sht4x {
     /// # Errors
     ///
     /// Will error if there is an I2c error.
-    pub async fn measure<I: Instance>(
+    pub async fn measure<I: i2c::I2c>(
         &self,
-        bus: &mut I2cBus<'_, I>,
+        bus: &mut I,
         precision: Precision,
-    ) -> Result<Measurement> {
+    ) -> Result<Measurement, I::Error> {
         let data: [u8; 6] = self.0.measure(bus, precision).await?;
 
         // datasheet section 4.5
@@ -48,8 +45,8 @@ impl Sht4x {
         sum_check(&crc, temp, t_sum, "temperature");
         sum_check(&crc, humidity, h_sum, "humidity");
 
-        let temp: u16 = LittleEndian::read_u16(temp);
-        let humidity: u16 = LittleEndian::read_u16(humidity);
+        let temp: u16 = BigEndian::read_u16(temp);
+        let humidity: u16 = BigEndian::read_u16(humidity);
 
         let temp_c = signal_to_temp(temp);
         let humidity = signal_to_rh(humidity);
@@ -60,7 +57,12 @@ impl Sht4x {
         })
     }
 
-    pub async fn serial_num<I: Instance>(&self, bus: &mut I2cBus<'_, I>) -> Result<[u8; 4]> {
+    /// Read the serial number of the sensor.
+    ///
+    /// # Errors
+    ///
+    /// Will error if there is an I2c error.
+    pub async fn serial_num<I: i2c::I2c>(&self, bus: &mut I) -> Result<u32, I::Error> {
         const READ_SERIAL_NUMBER: u8 = 0x89;
         self.0.serial_num(bus, READ_SERIAL_NUMBER).await
     }
