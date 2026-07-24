@@ -1,7 +1,4 @@
-use heapless::{
-    LenType, String, format,
-    string::{StringInner, StringStorage},
-};
+use heapless::{String, format, string::StringView};
 
 use core::fmt::Write;
 
@@ -54,11 +51,7 @@ pub fn fmt_pad_u8(u: u8, after: Option<usize>) -> String<8> {
 /// # Panics
 ///
 /// Fails if the string does not have the capacity for `num` additional chars.
-pub fn pad<LenT, S>(s: &mut StringInner<LenT, S>, char: char, num: usize)
-where
-    LenT: LenType,
-    S: StringStorage,
-{
+pub fn pad(s: &mut StringView, char: char, num: usize) {
     debug_assert!(s.len() + num <= s.capacity());
 
     for _ in 0..num {

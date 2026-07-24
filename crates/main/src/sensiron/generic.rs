@@ -35,13 +35,13 @@ impl Sensor {
         read_delay: Option<Duration>,
     ) -> Result<[u8; RESULT_SIZE], I::Error> {
         let mut result = [0; RESULT_SIZE];
-        bus.write(self.addr, &cmd.into().to_be_bytes()).await?;
+        self.start_cmd(bus, cmd).await?;
         Timer::after(read_delay.unwrap_or_default()).await;
         bus.read(self.addr, &mut result).await?;
         Ok(result)
     }
 
-    pub(super) async fn write_cmd<I: i2c::I2c>(
+    pub(super) async fn start_cmd<I: i2c::I2c>(
         &self,
         bus: &mut I,
         cmd: impl Into<u16>,
@@ -90,16 +90,17 @@ impl Sensor {
         Ok(u32::from_be_bytes(combined))
     }
 
-    /// Tell the sensor to soft-reset.
+    /// Tell the sensor to soft-reset and wait. (sht4x and sts4x only)
     ///
     /// # Errors
     ///
     /// Will error if there is an I2c error.
-    pub async fn soft_reset<I: i2c::I2c>(&self, bus: &mut I) -> Result<(), I::Error> {
+    pub(super) async fn soft_reset<I: i2c::I2c>(&self, bus: &mut I) -> Result<(), I::Error> {
         const SOFT_RESET: u8 = 0x94;
         // special command, only ACKs, so no return data
-        self.write_cmd(bus, SOFT_RESET).await
-        // TODO: wait a bit here?
+        self.start_cmd(bus, SOFT_RESET).await?;
+        Timer::after_millis(1).await;
+        Ok(())
     }
 
     // TODO: ..heating cmds

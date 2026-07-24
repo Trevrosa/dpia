@@ -30,7 +30,7 @@ impl Sen5x {
     /// Fails if there is an I2c error.
     pub async fn measure<I: i2c::I2c>(&self, bus: &mut I) -> Result<Measurement, I::Error> {
         // start measurement, takes 50 ms (datasheet 6.1)
-        self.0.write_cmd(bus, 0x21_u8).await?;
+        self.0.start_cmd(bus, 0x21_u8).await?;
         Timer::after_millis(50).await;
 
         // wait until measurement is ready
@@ -49,7 +49,7 @@ impl Sen5x {
             .await?;
 
         // stop measurement to save power (datasheet 6.1.3), takes 200 ms (datasheet 6.1)
-        self.0.write_cmd(bus, 0x0104_u16).await?;
+        self.0.start_cmd(bus, 0x0104_u16).await?;
         Timer::after_millis(200).await;
 
         let crc = Crc::<u8>::new(&CRC_8_SENSIRON);
@@ -134,7 +134,7 @@ impl Sen5x {
     /// Fails on an I2c error.
     pub async fn reset<I: i2c::I2c>(&self, bus: &mut I) -> Result<(), I::Error> {
         // reset command, takes 100 ms (datasheet 6.1)
-        self.0.write_cmd(bus, 0xD304_u16).await?;
+        self.0.start_cmd(bus, 0xD304_u16).await?;
         Timer::after_millis(100).await;
         Ok(())
     }

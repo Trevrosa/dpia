@@ -29,7 +29,7 @@ pub struct Server {
 
 #[gatt_service(uuid = service::ENVIRONMENTAL_SENSING)]
 pub struct SensorService {
-    #[descriptor(uuid = descriptors::VALID_RANGE, read, value = [0,100])]
+    #[descriptor(uuid = descriptors::VALID_RANGE, read, value = [0, 100])]
     #[characteristic(uuid = characteristic::HUMIDITY, read)]
     relative_humidity: u8,
     #[characteristic(uuid = characteristic::TEMPERATURE, read)]
@@ -51,13 +51,13 @@ pub async fn server_loop<'vals, C: Controller>(
             }
         };
 
-        if let Err(err) = events_task(server, &conn, global_data).await {
+        if let Err(err) = handle_connection(server, &conn, global_data).await {
             error!("[gatt] failure while handling connection: {}", err);
         }
     }
 }
 
-async fn events_task(
+async fn handle_connection(
     server: &Server<'_>,
     conn: &GattConnection<'_, '_, DefaultPacketPool>,
     global_data: &'static GlobalSensorDataMutex,
@@ -97,6 +97,13 @@ async fn events_task(
                         );
                         write.reject(AttErrorCode::WRITE_NOT_PERMITTED)
                     }
+                    // GattEvent::Other(other) => {
+                    //     let a = other.payload();
+                    //     let client = a.incoming();
+                    //     match client {
+                    //         trouble_host::att::AttClient::Request()
+                    //     }
+                    // },
                     _ => event.reject(AttErrorCode::REQUEST_NOT_SUPPORTED),
                 };
 
@@ -123,8 +130,8 @@ async fn advertise<'vals, 'server, C: Controller>(
         &[
             // flags must be set first and must include BR_EDR_NOT_SUPPORTED
             AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
-            AdStructure::CompleteLocalName(b"dpia"),
             AdStructure::ServiceUuids16(&[service::ENVIRONMENTAL_SENSING.to_be_bytes()]),
+            AdStructure::CompleteLocalName(b"dpia"),
         ],
         &mut adv_data[..],
     )?;

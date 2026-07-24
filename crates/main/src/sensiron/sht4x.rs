@@ -66,4 +66,13 @@ impl Sht4x {
         const READ_SERIAL_NUMBER: u8 = 0x89;
         self.0.serial_num(bus, READ_SERIAL_NUMBER).await
     }
+
+    /// Tell the sensor to soft-reset and wait.
+    ///
+    /// # Errors
+    ///
+    /// Will error if there is an I2c error.
+    pub async fn soft_reset<I: i2c::I2c>(&self, bus: &mut I) -> Result<(), I::Error> {
+        self.0.soft_reset(bus).await
+    }
 }

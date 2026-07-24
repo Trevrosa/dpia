@@ -11,6 +11,7 @@ use embassy_time::{Duration, Timer};
 use heapless::{String, format};
 use reqwless::{client::HttpClient, request::Method, response::StatusCode};
 
+pub mod ep0159;
 pub mod sensiron;
 
 pub type HttpClientMutex = Mutex<

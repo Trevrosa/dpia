@@ -1,10 +1,16 @@
 #![no_std]
 #![no_main]
-#![allow(clippy::must_use_candidate)]
-
-mod bt;
-pub mod data;
-mod tasks;
+#![allow(clippy::must_use_candidate, clippy::items_after_statements)]
+#![cfg_attr(
+    any(
+        feature = "no-bt",
+        feature = "no-i2c",
+        feature = "no-sleep",
+        feature = "no-wifi",
+        not(feature = "monitor-bat")
+    ),
+    allow(unused)
+)]
 
 use core::str::FromStr;
 
@@ -25,7 +31,9 @@ use embassy_net::{
     dns::DnsSocket,
     tcp::client::{TcpClient, TcpClientState},
 };
+use embassy_rp::peripherals::{DMA_CH2, UART0};
 use embassy_rp::spinlock_mutex::SpinlockRawMutex;
+use embassy_rp::uart;
 use embassy_rp::{
     aon_timer,
     binary_info::{EntryAddr, rp_cargo_version, rp_program_build_attribute, rp_program_name},
@@ -46,9 +54,13 @@ use static_cell::StaticCell;
 use trouble_host::prelude::ExternalController;
 
 use crate::data::SensorData;
-use crate::tasks::{ble, cyw43, data_collector, net, power_manager};
+use crate::tasks::{ble, cyw43, data_collector, net, power_manager, power_status};
 
 use {defmt_rtt as _, panic_probe as _};
+
+mod bt;
+pub mod data;
+mod tasks;
 
 #[used]
 #[unsafe(link_section = ".bi_entries")]
@@ -60,7 +72,8 @@ pub static PICOTOOL_ENTRIES: [EntryAddr; 3] = [
 
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0       => pio::InterruptHandler<PIO0>;
-    DMA_IRQ_0        => dma::InterruptHandler<DMA_CH0>, dma::InterruptHandler<DMA_CH1>;
+    DMA_IRQ_0        => dma::InterruptHandler<DMA_CH0>, dma::InterruptHandler<DMA_CH1>, dma::InterruptHandler<DMA_CH2>;
+    UART0_IRQ        => uart::InterruptHandler<UART0>;
     I2C0_IRQ         => i2c::InterruptHandler<I2C0>;
     I2C1_IRQ         => i2c::InterruptHandler<I2C1>;
     POWMAN_IRQ_TIMER => aon_timer::InterruptHandler;
@@ -74,6 +87,10 @@ async fn main(spawner: Spawner) -> ! {
     let mut rng = RoscRng;
 
     info!("Hello, World!!");
+
+    // MONITOR POWER
+    #[cfg(feature = "monitor-bat")]
+    spawner.spawn(unwrap!(power_status(p.UART0, p.PIN_13, p.DMA_CH1)));
 
     // let fw = aligned_bytes!("../../../cyw43-firmware/43439A0.bin");
     // let btfw = aligned_bytes!("../../../cyw43-firmware/43439A0_btfw.bin");
@@ -117,156 +134,169 @@ async fn main(spawner: Spawner) -> ! {
 
     info!("cyw43 set up");
 
-    // BLUETOOTH
+    // required for bluetooth to have data
     static GLOBAL_SENSOR_DATA: StaticCell<GlobalSensorDataMutex> = StaticCell::new();
     let global_sensor_data = GLOBAL_SENSOR_DATA.init(Mutex::new(SensorData::default()));
-    info!("starting bluetooth controller");
-    let bt_control: ExternalController<BtDriver, 10> = ExternalController::new(bt_dev);
-    let address = control.address().await;
-    spawner.spawn(unwrap!(ble(bt_control, address, global_sensor_data)));
+
+    // BLUETOOTH
+    #[cfg(not(feature = "no-bt"))]
+    {
+        info!("starting bluetooth controller");
+        let bt_control: ExternalController<BtDriver, 10> = ExternalController::new(bt_dev);
+        let address = control.address().await;
+        spawner.spawn(unwrap!(ble(bt_control, address, global_sensor_data)));
+    }
 
     // WIFI
-    info!("scanning for wifi networks");
+    #[cfg(not(feature = "no-wifi"))]
+    let client = {
+        info!("scanning for wifi networks");
 
-    let wanted_ssid = include_str!("../config/wanted_ssid");
-    let ssid_pass = include_str!("../config/ssid_pass");
+        let wanted_ssid = include_str!("../config/wanted_ssid");
+        let ssid_pass = include_str!("../config/ssid_pass");
 
-    {
-        let mut scanner = control.scan(ScanOptions::default()).await;
+        {
+            let mut scanner = control.scan(ScanOptions::default()).await;
 
-        while let Some(scan) = scanner.next().await {
-            let ssid = str::from_utf8(&scan.ssid).unwrap_or("???");
-            info!(
-                "found wifi: `{}`, strength {}dbM, channel {}",
-                ssid, scan.rssi, scan.ctl_ch
-            );
+            while let Some(scan) = scanner.next().await {
+                let ssid = str::from_utf8(&scan.ssid).unwrap_or("???");
+                info!(
+                    "found wifi: `{}`, strength {}dbM, channel {}",
+                    ssid, scan.rssi, scan.ctl_ch
+                );
 
-            if ssid == wanted_ssid {
-                break;
+                if ssid == wanted_ssid {
+                    break;
+                }
             }
         }
-    }
 
-    info!("joining `{}`", wanted_ssid);
-    const WIFI_JOIN_TRIES: usize = 8;
-    for i in 0..=WIFI_JOIN_TRIES {
-        if i == WIFI_JOIN_TRIES {
-            defmt::panic!("couldnt join wifi in {} tries", WIFI_JOIN_TRIES);
+        info!("joining `{}`", wanted_ssid);
+        const WIFI_JOIN_TRIES: usize = 8;
+        for i in 0..=WIFI_JOIN_TRIES {
+            if i == WIFI_JOIN_TRIES {
+                defmt::panic!("couldnt join wifi in {} tries", WIFI_JOIN_TRIES);
+            }
+
+            let join = control
+                .join(wanted_ssid, JoinOptions::new(ssid_pass.as_bytes()))
+                .await;
+
+            if let Err(err) = join {
+                error!("failed to join: {}", err);
+            } else {
+                break;
+            }
+
+            info!("retrying");
         }
+        info!("joined successfully!");
 
-        let join = control
-            .join(wanted_ssid, JoinOptions::new(ssid_pass.as_bytes()))
-            .await;
+        control.gpio_set(0, true).await;
 
-        if let Err(err) = join {
-            error!("failed to join: {}", err);
-        } else {
-            break;
-        }
+        // NET
+        static NET_RESOURCES: StaticCell<StackResources<3>> = StaticCell::new();
 
-        info!("retrying");
-    }
-    info!("joined successfully!");
+        let mut dhcp_config = DhcpConfig::default();
+        dhcp_config.hostname = Some(unwrap!(heapless::String::from_str("trevor's pico 2w"))); // TODO: change this probably
+        let net_config = embassy_net::Config::dhcpv4(dhcp_config);
 
-    control.gpio_set(0, true).await;
+        let seed = rng.next_u64();
 
-    // NET
-    static NET_RESOURCES: StaticCell<StackResources<3>> = StaticCell::new();
+        let (stack, runner) = embassy_net::new(
+            net_dev,
+            net_config,
+            NET_RESOURCES.init(StackResources::new()),
+            seed,
+        );
 
-    let mut dhcp_config = DhcpConfig::default();
-    dhcp_config.hostname = Some(unwrap!(heapless::String::from_str("trevor's pico 2w"))); // TODO: change this probably
-    let net_config = embassy_net::Config::dhcpv4(dhcp_config);
+        spawner.spawn(unwrap!(net(runner)));
 
-    let seed = rng.next_u64();
+        info!("waiting for dhcp");
+        let net_config = wait_for_config(stack).await;
+        info!("our ip is {:?}", net_config.address.address());
 
-    let (stack, runner) = embassy_net::new(
-        net_dev,
-        net_config,
-        NET_RESOURCES.init(StackResources::new()),
-        seed,
-    );
+        static TCP_STATE: StaticCell<TcpClientState<3, 2048, 2048>> = StaticCell::new();
+        let tcp = TcpClient::new(stack, TCP_STATE.init(TcpClientState::new()));
+        let dns = DnsSocket::new(stack);
+        info!("tcp & dns set up");
 
-    spawner.spawn(unwrap!(net(runner)));
+        let q = dns
+            .query("trevrosa.dev", embassy_net::dns::DnsQueryType::A)
+            .await
+            .unwrap();
+        info!("trevrosa.dev: {:?}", q);
 
-    info!("waiting for dhcp");
-    let net_config = wait_for_config(stack).await;
-    info!("our ip is {:?}", net_config.address.address());
+        // TLS
+        static TLS_R: StaticCell<[u8; 16640]> = StaticCell::new();
+        static TLS_W: StaticCell<[u8; 16640]> = StaticCell::new();
+        #[allow(clippy::large_stack_arrays)]
+        let tls_r = TLS_R.init_with(|| [0; _]);
+        #[allow(clippy::large_stack_arrays)]
+        let tls_w = TLS_W.init_with(|| [0; _]);
 
-    static TCP_STATE: StaticCell<TcpClientState<3, 2048, 2048>> = StaticCell::new();
-    let tcp = TcpClient::new(stack, TCP_STATE.init(TcpClientState::new()));
-    let dns = DnsSocket::new(stack);
-    info!("tcp & dns set up");
+        // no certificate verification but should be ok since we only request some domains
+        let tls_config = TlsConfig::new(seed, tls_r, tls_w, reqwless::client::TlsVerify::None);
 
-    let q = dns
-        .query("trevrosa.dev", embassy_net::dns::DnsQueryType::A)
-        .await
-        .unwrap();
-    info!("trevrosa.dev: {:?}", q);
-
-    // TLS
-    static TLS_R: StaticCell<[u8; 16640]> = StaticCell::new();
-    static TLS_W: StaticCell<[u8; 16640]> = StaticCell::new();
-    #[allow(clippy::large_stack_arrays)]
-    let tls_r = TLS_R.init_with(|| [0; _]);
-    #[allow(clippy::large_stack_arrays)]
-    let tls_w = TLS_W.init_with(|| [0; _]);
-
-    // no certificate verification but should be ok since we only request some domains
-    let tls_config = TlsConfig::new(seed, tls_r, tls_w, reqwless::client::TlsVerify::None);
-
-    static TCP: StaticCell<TcpClient<'static, 3, 2048, 2048>> = StaticCell::new();
-    static DNS: StaticCell<DnsSocket<'static>> = StaticCell::new();
-    static CLIENT: StaticCell<HttpClientMutex> = StaticCell::new();
-    let client = CLIENT.init(Mutex::new(HttpClient::new_with_tls(
-        TCP.init(tcp),
-        DNS.init(dns),
-        tls_config,
-    )));
-    info!("http client set up");
+        static TCP: StaticCell<TcpClient<'static, 3, 2048, 2048>> = StaticCell::new();
+        static DNS: StaticCell<DnsSocket<'static>> = StaticCell::new();
+        static CLIENT: StaticCell<HttpClientMutex> = StaticCell::new();
+        info!("http client set up");
+        CLIENT.init(Mutex::new(HttpClient::new_with_tls(
+            TCP.init(tcp),
+            DNS.init(dns),
+            tls_config,
+        )))
+    };
 
     // SENSORS
-    let mut i2c_config = i2c::Config::default();
-    i2c_config.scl_pullup = false;
-    i2c_config.sda_pullup = false;
-    let mut i2c: I2c<'_, I2C0, i2c::Async> =
-        I2c::new_async(p.I2C0, p.PIN_17, p.PIN_16, Irqs, i2c_config);
-    info!("initialised i2c bus!");
+    #[cfg(not(feature = "no-i2c"))]
+    {
+        let mut i2c_config = i2c::Config::default();
+        i2c_config.scl_pullup = false;
+        i2c_config.sda_pullup = false;
+        let mut i2c: I2c<'_, I2C0, i2c::Async> =
+            I2c::new_async(p.I2C0, p.PIN_17, p.PIN_16, Irqs, i2c_config);
+        info!("initialised i2c bus!");
 
-    let humidity = Sht4x::new(SHT40_AD1B);
-    let temp = Sts4x::new(STS40_CD1B);
-    let air = Sen5x::new(sen5x::ADDR);
+        let humidity = Sht4x::new(SHT40_AD1B);
+        let temp = Sts4x::new(STS40_CD1B);
+        let air = Sen5x::new(sen5x::ADDR);
 
-    let air_serial = air.serial_num(&mut i2c).await.unwrap_or_default();
-    let air_serial = str::from_utf8(&air_serial).unwrap_or("???");
+        let air_serial = air.serial_num(&mut i2c).await.unwrap_or_default();
+        let air_serial = str::from_utf8(&air_serial).unwrap_or("???");
 
-    defmt::info!(
-        "sht: {}, sts: {}, sen: {}",
-        humidity.serial_num(&mut i2c).await,
-        temp.serial_num(&mut i2c).await,
-        air_serial
-    );
+        defmt::info!(
+            "sht: {}, sts: {}, sen: {}",
+            humidity.serial_num(&mut i2c).await,
+            temp.serial_num(&mut i2c).await,
+            air_serial
+        );
 
-    // DISPLAY
-    let sck = Output::new(p.PIN_2, Level::Low);
-    let mosi = Output::new(p.PIN_3, Level::Low);
-    let cs = Output::new(p.PIN_4, Level::High);
-    let displays = MAX7219::from_pins(2, mosi, cs, sck).ok();
-    if displays.is_none() {
-        error!("failed to init max7219");
+        // DISPLAY
+        let sck = Output::new(p.PIN_2, Level::Low);
+        let mosi = Output::new(p.PIN_3, Level::Low);
+        let cs = Output::new(p.PIN_4, Level::High);
+        let displays = MAX7219::from_pins(2, mosi, cs, sck).ok();
+        if displays.is_none() {
+            error!("failed to init max7219");
+        }
+
+        // DATA COLLECTION
+        #[cfg(not(feature = "no-wifi"))]
+        spawner.spawn(unwrap!(data_collector(
+            i2c,
+            humidity,
+            temp,
+            air,
+            displays,
+            client,
+            global_sensor_data
+        )));
     }
 
-    // DATA COLLECTION
-    spawner.spawn(unwrap!(data_collector(
-        i2c,
-        humidity,
-        temp,
-        air,
-        displays,
-        client,
-        global_sensor_data
-    )));
-
     // POWER MANAGEMENT
+    #[cfg(not(feature = "no-wifi"))]
     spawner.spawn(unwrap!(power_manager(p.POWMAN, client)));
 
     info!("finished!");

@@ -1,8 +1,8 @@
 use cyw43::bluetooth::BtDriver;
 use cyw43_pio::PioSpi;
-use defmt::{error, info};
+use defmt::{error, info, warn};
 use dpia::{
-    HttpClientMutex, debug_datetime, next_weekend,
+    HttpClientMutex, debug_datetime, ep0159, next_weekend,
     sensiron::{sen5x::Sen5x, sht4x::Sht4x, sts4x::Sts4x},
     sync_epoch_ms, try_forever,
 };
@@ -12,9 +12,11 @@ use embassy_rp::{
     aon_timer::{self, DayOfWeek},
     gpio::Output,
     i2c::{self, I2c},
-    peripherals::{I2C0, PIO0, POWMAN},
+    peripherals::{DMA_CH1, I2C0, PIN_13, PIO0, POWMAN, UART0},
+    uart,
 };
 use embassy_time::{Duration, Timer};
+use heapless::String;
 use max7219::MAX7219;
 use trouble_host::{
     Address, HostResources,
@@ -161,7 +163,7 @@ pub async fn ble(
     global: &'static GlobalSensorDataMutex,
 ) {
     const CONNECTIONS: usize = 1;
-    const L2CAP_CHANNELS: usize = 2; // signalling + gatt
+    const L2CAP_CHANNELS: usize = 2; // signalling + att
     const ADV_SETS: usize = 1;
 
     let mut resources: HostResources<DefaultPacketPool, CONNECTIONS, L2CAP_CHANNELS, ADV_SETS> =
@@ -183,4 +185,31 @@ pub async fn ble(
         crate::bt::server_loop(stack.peripheral, &server, global),
     )
     .await;
+}
+
+// https://wiki.52pi.com/index.php?title=EP-0159
+#[embassy_executor::task]
+pub async fn power_status(
+    uart: Peri<'static, UART0>,
+    rx: Peri<'static, PIN_13>,
+    rx_dma: Peri<'static, DMA_CH1>,
+) {
+    let mut uart = uart::UartRx::new(uart, rx, Irqs, rx_dma, uart::Config::default());
+
+    let mut buf: String<50> = String::new();
+    let mut pipes: u8 = 0;
+    let mut values = ep0159::Values::default();
+
+    loop {
+        let mut byte = [0; 1];
+        if let Err(err) = uart.read(&mut byte).await {
+            warn!("[ep0159] failed to read: {}", err);
+            continue;
+        }
+
+        let ready = ep0159::handle_byte(byte[0], &mut buf, &mut values, &mut pipes);
+        if ready {
+            values.log();
+        }
+    }
 }

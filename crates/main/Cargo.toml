@@ -17,6 +17,10 @@ test = false
 
 [features]
 no-sleep = []
+no-i2c = []
+no-wifi = []
+no-bt = []
+monitor-bat = []
 
 [dependencies]
 defmt = "1.1.1"
