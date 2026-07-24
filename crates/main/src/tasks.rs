@@ -1,4 +1,3 @@
-use cyw43::bluetooth::BtDriver;
 use cyw43_pio::PioSpi;
 use defmt::{error, info, warn};
 use dpia::{
@@ -6,7 +5,6 @@ use dpia::{
     sensiron::{sen5x::Sen5x, sht4x::Sht4x, sts4x::Sts4x},
     sync_epoch_ms, try_forever,
 };
-use embassy_futures::join::join;
 use embassy_rp::{
     Peri,
     aon_timer::{self, DayOfWeek},
@@ -18,14 +16,9 @@ use embassy_rp::{
 use embassy_time::{Duration, Timer};
 use heapless::String;
 use max7219::MAX7219;
-use trouble_host::{
-    Address, HostResources,
-    gap::{GapConfig, PeripheralConfig},
-    prelude::{DefaultPacketPool, ExternalController, appearance},
-};
 
 use crate::{
-    GlobalSensorDataMutex, Irqs, bt,
+    GlobalSensorDataMutex, Irqs,
     data::{collect, show_data, submit},
 };
 
@@ -89,10 +82,10 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
             .set_alarm_after(Duration::from_secs((days * 60 * 60 * 24) + (6 * 60 * 60)))
             .unwrap();
 
-        #[cfg(feature = "no-sleep")]
+        #[cfg(feature = "sleep")]
         info!("[pwr] pretending to sleep");
 
-        #[cfg(not(feature = "no-sleep"))]
+        #[cfg(not(feature = "sleep"))]
         {
             info!("[pwr] sleeping soon");
             Timer::after_secs(3).await;
@@ -156,12 +149,26 @@ pub async fn data_collector(
     }
 }
 
+#[cfg(feature = "bt")]
+use cyw43::bluetooth::BtDriver;
+#[cfg(feature = "bt")]
+use trouble_host::prelude::ExternalController;
+
+#[cfg(feature = "bt")]
 #[embassy_executor::task]
 pub async fn ble(
     controller: ExternalController<BtDriver<'static>, 10>,
     address: [u8; 6],
     global: &'static GlobalSensorDataMutex,
 ) {
+    use crate::bt;
+    use embassy_futures::join::join;
+    use trouble_host::{
+        Address, HostResources,
+        gap::{GapConfig, PeripheralConfig},
+        prelude::{DefaultPacketPool, appearance},
+    };
+
     const CONNECTIONS: usize = 1;
     const L2CAP_CHANNELS: usize = 2; // signalling + att
     const ADV_SETS: usize = 1;

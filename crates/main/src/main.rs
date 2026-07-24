@@ -1,37 +1,14 @@
 #![no_std]
 #![no_main]
 #![allow(clippy::must_use_candidate, clippy::items_after_statements)]
-#![cfg_attr(
-    any(
-        feature = "no-bt",
-        feature = "no-i2c",
-        feature = "no-sleep",
-        feature = "no-wifi",
-        not(feature = "monitor-bat")
-    ),
-    allow(unused)
-)]
 
-use core::str::FromStr;
-
-use cyw43::bluetooth::BtDriver;
-use cyw43::{A4, Aligned, JoinOptions, ScanOptions};
+use cyw43::{A4, Aligned};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
-use defmt::{error, info, unwrap};
-use dpia::HttpClientMutex;
-use dpia::sensiron::{
-    sen5x::{self, Sen5x},
-    sht4x::{Sht4x, model_addrs::SHT40_AD1B},
-    sts4x::{Sts4x, model_addrs::STS40_CD1B},
-};
+use defmt::{info, unwrap, warn};
 use embassy_executor::Spawner;
 use embassy_futures::yield_now;
-use embassy_net::{
-    DhcpConfig, Stack, StackResources, StaticConfigV4,
-    dns::DnsSocket,
-    tcp::client::{TcpClient, TcpClientState},
-};
-use embassy_rp::peripherals::{DMA_CH2, UART0};
+use embassy_net::{Stack, StaticConfigV4};
+use embassy_rp::peripherals::UART0;
 use embassy_rp::spinlock_mutex::SpinlockRawMutex;
 use embassy_rp::uart;
 use embassy_rp::{
@@ -42,24 +19,27 @@ use embassy_rp::{
     config::Config,
     dma,
     gpio::{Level, Output},
-    i2c::{self, I2c},
+    i2c,
     peripherals::{DMA_CH0, DMA_CH1, I2C0, I2C1, PIO0},
     pio::{self, Pio},
 };
 use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
-use max7219::MAX7219;
-use reqwless::client::{HttpClient, TlsConfig};
 use static_cell::StaticCell;
-use trouble_host::prelude::ExternalController;
+
+#[cfg(feature = "wifi")]
+use dpia::HttpClientMutex;
 
 use crate::data::SensorData;
-use crate::tasks::{ble, cyw43, data_collector, net, power_manager, power_status};
+use crate::persistent::Data;
+use crate::tasks::cyw43;
 
 use {defmt_rtt as _, panic_probe as _};
 
+#[cfg(feature = "bt")]
 mod bt;
 pub mod data;
+mod persistent;
 mod tasks;
 
 #[used]
@@ -72,7 +52,7 @@ pub static PICOTOOL_ENTRIES: [EntryAddr; 3] = [
 
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0       => pio::InterruptHandler<PIO0>;
-    DMA_IRQ_0        => dma::InterruptHandler<DMA_CH0>, dma::InterruptHandler<DMA_CH1>, dma::InterruptHandler<DMA_CH2>;
+    DMA_IRQ_0        => dma::InterruptHandler<DMA_CH0>, dma::InterruptHandler<DMA_CH1>;
     UART0_IRQ        => uart::InterruptHandler<UART0>;
     I2C0_IRQ         => i2c::InterruptHandler<I2C0>;
     I2C1_IRQ         => i2c::InterruptHandler<I2C1>;
@@ -88,9 +68,17 @@ async fn main(spawner: Spawner) -> ! {
 
     info!("Hello, World!!");
 
+    let mut data = Data::read().clone();
+    data.boot_count += 1;
+    if let Err(err) = data.write(p.FLASH) {
+        warn!("failed to save to flash: {}", err);
+    } else {
+        info!("updated persistent data");
+    }
+
     // MONITOR POWER
     #[cfg(feature = "monitor-bat")]
-    spawner.spawn(unwrap!(power_status(p.UART0, p.PIN_13, p.DMA_CH1)));
+    spawner.spawn(unwrap!(tasks::power_status(p.UART0, p.PIN_13, p.DMA_CH1)));
 
     // let fw = aligned_bytes!("../../../cyw43-firmware/43439A0.bin");
     // let btfw = aligned_bytes!("../../../cyw43-firmware/43439A0_btfw.bin");
@@ -139,17 +127,32 @@ async fn main(spawner: Spawner) -> ! {
     let global_sensor_data = GLOBAL_SENSOR_DATA.init(Mutex::new(SensorData::default()));
 
     // BLUETOOTH
-    #[cfg(not(feature = "no-bt"))]
+    // TODO: onboarding with bluetooth to put wifi and password
+    #[cfg(feature = "bt")]
     {
+        use cyw43::bluetooth::BtDriver;
+        use trouble_host::prelude::ExternalController;
+
         info!("starting bluetooth controller");
         let bt_control: ExternalController<BtDriver, 10> = ExternalController::new(bt_dev);
         let address = control.address().await;
-        spawner.spawn(unwrap!(ble(bt_control, address, global_sensor_data)));
+        spawner.spawn(unwrap!(tasks::ble(bt_control, address, global_sensor_data)));
     }
 
     // WIFI
-    #[cfg(not(feature = "no-wifi"))]
+    #[cfg(feature = "wifi")]
     let client = {
+        use core::str::FromStr;
+        use cyw43::JoinOptions;
+        use cyw43::ScanOptions;
+        use defmt::error;
+        use embassy_net::{
+            DhcpConfig, StackResources,
+            dns::DnsSocket,
+            tcp::client::{TcpClient, TcpClientState},
+        };
+        use reqwless::client::{HttpClient, TlsConfig};
+
         info!("scanning for wifi networks");
 
         let wanted_ssid = include_str!("../config/wanted_ssid");
@@ -210,7 +213,7 @@ async fn main(spawner: Spawner) -> ! {
             seed,
         );
 
-        spawner.spawn(unwrap!(net(runner)));
+        spawner.spawn(unwrap!(tasks::net(runner)));
 
         info!("waiting for dhcp");
         let net_config = wait_for_config(stack).await;
@@ -250,8 +253,17 @@ async fn main(spawner: Spawner) -> ! {
     };
 
     // SENSORS
-    #[cfg(not(feature = "no-i2c"))]
+    #[cfg(feature = "i2c")]
     {
+        use dpia::sensiron::{
+            sen5x::{self, Sen5x},
+            sht4x::{Sht4x, model_addrs::SHT40_AD1B},
+            sts4x::{Sts4x, model_addrs::STS40_CD1B},
+        };
+        use embassy_rp::i2c::I2c;
+        use max7219::MAX7219;
+
+        use defmt::error;
         let mut i2c_config = i2c::Config::default();
         i2c_config.scl_pullup = false;
         i2c_config.sda_pullup = false;
@@ -283,8 +295,8 @@ async fn main(spawner: Spawner) -> ! {
         }
 
         // DATA COLLECTION
-        #[cfg(not(feature = "no-wifi"))]
-        spawner.spawn(unwrap!(data_collector(
+        #[cfg(feature = "wifi")]
+        spawner.spawn(unwrap!(tasks::data_collector(
             i2c,
             humidity,
             temp,
@@ -296,8 +308,8 @@ async fn main(spawner: Spawner) -> ! {
     }
 
     // POWER MANAGEMENT
-    #[cfg(not(feature = "no-wifi"))]
-    spawner.spawn(unwrap!(power_manager(p.POWMAN, client)));
+    #[cfg(feature = "wifi")]
+    spawner.spawn(unwrap!(tasks::power_manager(p.POWMAN, client)));
 
     info!("finished!");
 

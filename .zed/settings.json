@@ -6,7 +6,11 @@
   "lsp": {
     "rust-analyzer": {
       "initialization_options": {
-        "cargo": { "allTargets": false, "target": "thumbv8m.main-none-eabi" },
+        "cargo": {
+          "allTargets": false,
+          "target": "thumbv8m.main-none-eabi",
+          "features": "all",
+        },
       },
     },
   },

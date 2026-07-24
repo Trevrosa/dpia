@@ -44,6 +44,17 @@ SECTIONS {
 } INSERT AFTER .text;
 
 SECTIONS {
+    /* ### our persistent data */
+    .persistent_flash : ALIGN(4096)
+    {
+        __persistent_flash_start = .;
+        KEEP(*(.persistent_flash));
+        . = ALIGN(4096);
+        __persistent_flash_end = .;
+    } > FLASH
+} INSERT AFTER .bi_entries;
+
+SECTIONS {
     /* ### Boot ROM extra info
      *
      * Goes after everything in our program, so it can contain a signature.
