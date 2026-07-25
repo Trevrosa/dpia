@@ -1,5 +1,6 @@
 #![no_std]
 #![allow(clippy::must_use_candidate)]
+#![allow(clippy::items_after_statements)]
 
 use core::num::ParseIntError;
 

@@ -116,7 +116,7 @@ async fn main(spawner: Spawner) -> ! {
         dma::Channel::new(p.DMA_CH0, Irqs),
     );
 
-    info!("wifi pio and pins set up");
+    info!("cyw43 pio and pins set up");
 
     // WIRELESS
     static CYW43_STATE: StaticCell<cyw43::State> = StaticCell::new();
@@ -127,7 +127,7 @@ async fn main(spawner: Spawner) -> ! {
     spawner.spawn(unwrap!(cyw43(runner)));
     control.init(clm).await;
 
-    info!("cyw43 set up");
+    info!("cyw43 device set up");
 
     // required for bluetooth to have data
     static GLOBAL_SENSOR_DATA: StaticCell<GlobalSensorDataMutex> = StaticCell::new();

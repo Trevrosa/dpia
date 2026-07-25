@@ -1,25 +1,51 @@
 use byteorder::{BigEndian, ByteOrder};
 use crc::Crc;
-use dpia_lib::CRC_8_SENSIRON;
+use dpia_lib::{CRC_8_SENSIRON, concat_bytes};
 use embassy_time::{Duration, Timer};
 use embedded_hal_async::i2c;
 
-use crate::{make_sensor, sensiron::sum_check};
+use super::sum_check;
+use crate::make_sensor;
+
+pub mod types;
+use types::{DeviceStatus, Measurement};
 
 pub const ADDR: u8 = 0x69;
 
 make_sensor!(Sen5x, "the `SEN5x` particulate matter sensor");
 
-#[derive(defmt::Format)]
-pub struct Measurement {
-    pub pm10: u16,
-    pub pm2_5: u16,
-    pub voc: u16,
-    pub nox: u16,
-}
-
-// sen5x uses big-endian, max size from the read serial number command in datasheet section 6.1.15
 impl Sen5x {
+    /// Get the device's status.
+    ///
+    /// # Errors
+    ///
+    /// Fails if there is an I2c error.
+    pub async fn status<I: i2c::I2c>(&self, bus: &mut I) -> Result<DeviceStatus, I::Error> {
+        const READ_DEVICE_STATUS: u16 = 0xD206;
+        let data: [u8; 6] = self
+            .0
+            .run_cmd(
+                bus,
+                READ_DEVICE_STATUS.to_be_bytes(),
+                Some(Duration::from_millis(20)),
+            )
+            .await?;
+
+        let msb = &data[0..=1];
+        let msb_crc = data[2];
+        let lsb = &data[3..=4];
+        let lsb_crc = data[5];
+
+        let crc = Crc::<u8>::new(&CRC_8_SENSIRON);
+
+        sum_check(&crc, msb, msb_crc, "msb");
+        sum_check(&crc, lsb, lsb_crc, "lsb");
+
+        let data = u32::from_be_bytes(concat_bytes!(msb, lsb, 4));
+
+        Ok(DeviceStatus::from_u32(data))
+    }
+
     /// Read the measured values of the sensor.
     ///
     /// Note: this takes longer to run because we need to put the sensor in measurement mode,
@@ -30,7 +56,8 @@ impl Sen5x {
     /// Fails if there is an I2c error.
     pub async fn measure<I: i2c::I2c>(&self, bus: &mut I) -> Result<Measurement, I::Error> {
         // start measurement, takes 50 ms (datasheet 6.1)
-        self.0.start_cmd(bus, [0x21]).await?;
+        const START_MEASUREMENT: u8 = 0x21;
+        self.0.start_cmd(bus, [START_MEASUREMENT]).await?;
         Timer::after_millis(50).await;
 
         // wait until measurement is ready
@@ -43,18 +70,21 @@ impl Sen5x {
 
         // format: 2 bytes data, 1 byte crc, repeated for each measurement (24 bytes total)
         // read_delay from datasheet 6.1
+        const READ_MEASURED_VALUES: u16 = 0x03C4;
         let data: [u8; 24] = self
             .0
             .run_cmd(
                 bus,
-                0x03C4_u16.to_be_bytes(),
+                READ_MEASURED_VALUES.to_be_bytes(),
                 Some(Duration::from_millis(20)),
             )
             .await?;
 
         // stop measurement to save power (datasheet 6.1.3), takes 200 ms (datasheet 6.1)
-        self.0.start_cmd(bus, 0x0104_u16.to_be_bytes()).await?;
-        Timer::after_millis(200).await;
+        const STOP_MEASUREMENT: u16 = 0x0104;
+        self.0
+            .start_cmd(bus, STOP_MEASUREMENT.to_be_bytes())
+            .await?;
 
         let crc = Crc::<u8>::new(&CRC_8_SENSIRON);
 
@@ -84,13 +114,14 @@ impl Sen5x {
     }
 
     async fn data_ready<I: i2c::I2c>(&self, bus: &mut I) -> Result<bool, I::Error> {
+        const READ_DATA_READY: u16 = 0x0202;
         // format: 1 unused byte, 1 byte data, 1 byte crc of bytes 0..=1
         // read_delay from datasheet 6.1
         let data: [u8; 3] = self
             .0
             .run_cmd(
                 bus,
-                0x0202_u16.to_be_bytes(),
+                READ_DATA_READY.to_be_bytes(),
                 Some(Duration::from_millis(20)),
             )
             .await?;

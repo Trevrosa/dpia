@@ -32,3 +32,7 @@ pub fn sum_check(crc: &crc::Crc<u8>, data: &[u8], sum: u8, item: &'static str) {
         );
     }
 }
+
+pub fn is_bit_set(val: u32, index: u8) -> bool {
+    (val >> index) & 1 == 1
+}
