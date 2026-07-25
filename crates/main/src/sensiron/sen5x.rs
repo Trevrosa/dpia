@@ -30,7 +30,7 @@ impl Sen5x {
     /// Fails if there is an I2c error.
     pub async fn measure<I: i2c::I2c>(&self, bus: &mut I) -> Result<Measurement, I::Error> {
         // start measurement, takes 50 ms (datasheet 6.1)
-        self.0.start_cmd(bus, 0x21_u8).await?;
+        self.0.start_cmd(bus, [0x21]).await?;
         Timer::after_millis(50).await;
 
         // wait until measurement is ready
@@ -45,11 +45,15 @@ impl Sen5x {
         // read_delay from datasheet 6.1
         let data: [u8; 24] = self
             .0
-            .run_cmd(bus, 0x03C4_u16, Some(Duration::from_millis(20)))
+            .run_cmd(
+                bus,
+                0x03C4_u16.to_be_bytes(),
+                Some(Duration::from_millis(20)),
+            )
             .await?;
 
         // stop measurement to save power (datasheet 6.1.3), takes 200 ms (datasheet 6.1)
-        self.0.start_cmd(bus, 0x0104_u16).await?;
+        self.0.start_cmd(bus, 0x0104_u16.to_be_bytes()).await?;
         Timer::after_millis(200).await;
 
         let crc = Crc::<u8>::new(&CRC_8_SENSIRON);
@@ -84,7 +88,11 @@ impl Sen5x {
         // read_delay from datasheet 6.1
         let data: [u8; 3] = self
             .0
-            .run_cmd(bus, 0x0202_u16, Some(Duration::from_millis(20)))
+            .run_cmd(
+                bus,
+                0x0202_u16.to_be_bytes(),
+                Some(Duration::from_millis(20)),
+            )
             .await?;
 
         let ready = &data[0..=1];
@@ -105,7 +113,11 @@ impl Sen5x {
         // format: 2 bytes ascii, 1 byte checksum, ... repeated to byte 48
         let data: [u8; 48] = self
             .0
-            .run_cmd(bus, 0xD033_u16, Some(Duration::from_millis(20)))
+            .run_cmd(
+                bus,
+                0xD033_u16.to_be_bytes(),
+                Some(Duration::from_millis(20)),
+            )
             .await?;
 
         let mut serial = [0; 32];
@@ -134,7 +146,7 @@ impl Sen5x {
     /// Fails on an I2c error.
     pub async fn reset<I: i2c::I2c>(&self, bus: &mut I) -> Result<(), I::Error> {
         // reset command, takes 100 ms (datasheet 6.1)
-        self.0.start_cmd(bus, 0xD304_u16).await?;
+        self.0.start_cmd(bus, 0xD304_u16.to_be_bytes()).await?;
         Timer::after_millis(100).await;
         Ok(())
     }

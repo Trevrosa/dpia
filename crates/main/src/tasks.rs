@@ -13,7 +13,7 @@ use embassy_rp::{
     peripherals::{DMA_CH1, I2C0, PIN_13, PIO0, POWMAN, UART0},
     uart,
 };
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use heapless::String;
 use max7219::MAX7219;
 
@@ -34,6 +34,7 @@ pub async fn net(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'stat
     runner.run().await
 }
 
+#[cfg(feature = "powman")]
 #[embassy_executor::task]
 pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpClientMutex) -> ! {
     let mut timer = aon_timer::AonTimer::new(
@@ -82,16 +83,11 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
             .set_alarm_after(Duration::from_secs((days * 60 * 60 * 24) + (6 * 60 * 60)))
             .unwrap();
 
-        #[cfg(feature = "sleep")]
-        info!("[pwr] pretending to sleep");
+        info!("[pwr] sleeping soon");
+        Timer::after_secs(3).await;
+        info!("[pwr] sleeping now");
 
-        #[cfg(not(feature = "sleep"))]
-        {
-            info!("[pwr] sleeping soon");
-            Timer::after_secs(3).await;
-            info!("[pwr] sleeping now");
-            embassy_rp::clocks::dormant_sleep();
-        }
+        embassy_rp::clocks::dormant_sleep();
 
         // it should now be monday 6:00, wait until saturday 00:00
         info!("[pwr] woke up, syncing time");
@@ -195,6 +191,7 @@ pub async fn ble(
 }
 
 // https://wiki.52pi.com/index.php?title=EP-0159
+#[cfg(feature = "monitor-bat")]
 #[embassy_executor::task]
 pub async fn power_status(
     uart: Peri<'static, UART0>,
@@ -207,6 +204,7 @@ pub async fn power_status(
     let mut pipes: u8 = 0;
     let mut values = ep0159::Values::default();
 
+    let start = Instant::now();
     loop {
         let mut byte = [0; 1];
         if let Err(err) = uart.read(&mut byte).await {
@@ -215,7 +213,7 @@ pub async fn power_status(
         }
 
         let ready = ep0159::handle_byte(byte[0], &mut buf, &mut values, &mut pipes);
-        if ready {
+        if ready && start.elapsed().as_secs().is_multiple_of(5) {
             values.log();
         }
     }

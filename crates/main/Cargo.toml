@@ -16,8 +16,8 @@ bench = false
 test = false
 
 [features]
-default = ["sleep", "i2c", "wifi", "bt"]
-sleep = []
+default = ["i2c", "wifi", "bt"]
+powman = []
 i2c = []
 wifi = []
 bt = []

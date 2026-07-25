@@ -23,15 +23,16 @@ impl Sensor {
 
     /// Send a command to the sensor and get its response.
     ///
+    /// `cmd` must be big endian.
     /// `RESULT_SIZE` is in bytes.
     ///
     /// # Errors
     ///
     /// Will error if there is an I2c error.
-    pub(super) async fn run_cmd<I: i2c::I2c, const RESULT_SIZE: usize>(
+    pub(super) async fn run_cmd<I: i2c::I2c, const CMD_SIZE: usize, const RESULT_SIZE: usize>(
         &self,
         bus: &mut I,
-        cmd: impl Into<u16>,
+        cmd: [u8; CMD_SIZE],
         read_delay: Option<Duration>,
     ) -> Result<[u8; RESULT_SIZE], I::Error> {
         let mut result = [0; RESULT_SIZE];
@@ -41,12 +42,17 @@ impl Sensor {
         Ok(result)
     }
 
-    pub(super) async fn start_cmd<I: i2c::I2c>(
+    /// Start a command by writing `cmd` to `self.addr`.
+    ///
+    /// `cmd` must be big endian.
+    pub(super) async fn start_cmd<I: i2c::I2c, const CMD_SIZE: usize>(
         &self,
         bus: &mut I,
-        cmd: impl Into<u16>,
+        cmd: [u8; CMD_SIZE],
     ) -> Result<(), I::Error> {
-        bus.write(self.addr, &cmd.into().to_be_bytes()).await
+        // sht4x/sts4x use 8 bit cmds, sen5x uses 16 bit cmds
+        debug_assert!(CMD_SIZE <= 2);
+        bus.write(self.addr, &cmd).await
     }
 
     /// Run the measure command with the provided [`Precision`] and get its response. (only works for `SHT4x` and `STS4x`)
@@ -60,7 +66,7 @@ impl Sensor {
         precision: Precision,
     ) -> Result<[u8; RESULT_SIZE], I::Error> {
         let cmd = precision.cmd();
-        self.run_cmd(bus, cmd, Some(precision.timing())).await
+        self.run_cmd(bus, [cmd], Some(precision.timing())).await
     }
 
     /// Read the serial number of the sensor. (sht4x and sts4x only)
@@ -73,7 +79,7 @@ impl Sensor {
         bus: &mut I,
         cmd: u8,
     ) -> Result<u32, I::Error> {
-        let data: [u8; 6] = self.run_cmd(bus, cmd, None).await?;
+        let data: [u8; 6] = self.run_cmd(bus, [cmd], None).await?;
 
         let serial = &data[0..=1];
         let sum = data[2];
@@ -98,7 +104,7 @@ impl Sensor {
     pub(super) async fn soft_reset<I: i2c::I2c>(&self, bus: &mut I) -> Result<(), I::Error> {
         const SOFT_RESET: u8 = 0x94;
         // special command, only ACKs, so no return data
-        self.start_cmd(bus, SOFT_RESET).await?;
+        self.start_cmd(bus, [SOFT_RESET]).await?;
         Timer::after_millis(1).await;
         Ok(())
     }

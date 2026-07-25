@@ -22,12 +22,12 @@ impl Values {
 }
 
 /// `buf` should have a capacity of at least 50.
-/// 
+///
 /// Returns `true` if all values are updated (on the fourth pipe).
-/// 
+///
 /// # Panics
-/// 
-/// Fails if `buf` runs out of capacity. 
+///
+/// Fails if `buf` runs out of capacity.
 pub fn handle_byte(byte: u8, buf: &mut StringView, values: &mut Values, pipes: &mut u8) -> bool {
     if byte > 0x7f || byte == b'\r' {
         return false;

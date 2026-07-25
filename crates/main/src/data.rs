@@ -53,7 +53,7 @@ pub struct SensorData {
 
 pub async fn collect(i2c: &mut RpI2C0Async, humid: Sht4x, temp: Sts4x, air: Sen5x) -> SensorData {
     let log_err = |err: &i2c::Error| {
-        error!("[data] failed to measure: {}", err);
+        error!("[data] failed to measure: {:#b}", err);
     };
 
     info!("[data] measuring with sht4x");

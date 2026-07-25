@@ -44,12 +44,15 @@ SECTIONS {
 } INSERT AFTER .text;
 
 SECTIONS {
-    /* ### our persistent data */
-    .persistent_flash : ALIGN(4096)
+    /* ### our persistent data
+     * 
+     * marked NOLOAD to prevent flasher erasing 
+    */
+    .persistent_flash (NOLOAD) : ALIGN(4096)
     {
         __persistent_flash_start = .;
         KEEP(*(.persistent_flash));
-        . = ALIGN(4096);
+        . = __persistent_flash_start + 4096;
         __persistent_flash_end = .;
     } > FLASH
 } INSERT AFTER .bi_entries;

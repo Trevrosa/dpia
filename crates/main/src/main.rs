@@ -24,7 +24,7 @@ use embassy_rp::{
     pio::{self, Pio},
 };
 use embassy_sync::mutex::Mutex;
-use embassy_time::Timer;
+use embassy_time::{Instant, Timer};
 use static_cell::StaticCell;
 
 #[cfg(feature = "wifi")]
@@ -68,12 +68,19 @@ async fn main(spawner: Spawner) -> ! {
 
     info!("Hello, World!!");
 
-    let mut data = Data::read().clone();
-    data.boot_count += 1;
-    if let Err(err) = data.write(p.FLASH) {
-        warn!("failed to save to flash: {}", err);
-    } else {
-        info!("updated persistent data");
+    {
+        let mut data = Data::read();
+        info!("{}", data);
+        data.boot_count = data.boot_count.saturating_add(1);
+        let start = Instant::now();
+        if let Err(err) = data.write(p.FLASH) {
+            warn!("failed to save to flash: {}", err);
+        } else {
+            info!(
+                "updated persistent data (took {}ms)",
+                start.elapsed().as_millis()
+            );
+        }
     }
 
     // MONITOR POWER
@@ -226,8 +233,7 @@ async fn main(spawner: Spawner) -> ! {
 
         let q = dns
             .query("trevrosa.dev", embassy_net::dns::DnsQueryType::A)
-            .await
-            .unwrap();
+            .await;
         info!("trevrosa.dev: {:?}", q);
 
         // TLS
@@ -255,6 +261,7 @@ async fn main(spawner: Spawner) -> ! {
     // SENSORS
     #[cfg(feature = "i2c")]
     {
+        use defmt::error;
         use dpia::sensiron::{
             sen5x::{self, Sen5x},
             sht4x::{Sht4x, model_addrs::SHT40_AD1B},
@@ -263,7 +270,6 @@ async fn main(spawner: Spawner) -> ! {
         use embassy_rp::i2c::I2c;
         use max7219::MAX7219;
 
-        use defmt::error;
         let mut i2c_config = i2c::Config::default();
         i2c_config.scl_pullup = false;
         i2c_config.sda_pullup = false;
@@ -308,7 +314,7 @@ async fn main(spawner: Spawner) -> ! {
     }
 
     // POWER MANAGEMENT
-    #[cfg(feature = "wifi")]
+    #[cfg(all(feature = "powman", feature = "wifi"))]
     spawner.spawn(unwrap!(tasks::power_manager(p.POWMAN, client)));
 
     info!("finished!");
