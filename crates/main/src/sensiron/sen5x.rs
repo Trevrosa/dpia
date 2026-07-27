@@ -1,11 +1,10 @@
-use byteorder::{BigEndian, ByteOrder};
 use crc::Crc;
 use dpia_lib::{CRC_8_SENSIRON, concat_bytes};
 use embassy_time::{Duration, Timer};
 use embedded_hal_async::i2c;
 
 use super::sum_check;
-use crate::make_sensor;
+use crate::{make_sensor, sensiron::u16_from_be_bytes};
 
 pub mod types;
 use types::{DeviceStatus, Measurement};
@@ -106,10 +105,10 @@ impl Sen5x {
         sum_check(&crc, nox, data[23], "nox");
 
         Ok(Measurement {
-            pm10: BigEndian::read_u16(pm10),
-            pm2_5: BigEndian::read_u16(pm2_5),
-            voc: BigEndian::read_u16(voc),
-            nox: BigEndian::read_u16(nox),
+            pm10: u16_from_be_bytes(pm10),
+            pm2_5: u16_from_be_bytes(pm2_5),
+            voc: u16_from_be_bytes(voc),
+            nox: u16_from_be_bytes(nox),
         })
     }
 

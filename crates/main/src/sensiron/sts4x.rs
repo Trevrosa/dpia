@@ -2,7 +2,6 @@
 
 pub mod model_addrs;
 
-use byteorder::{BigEndian, ByteOrder};
 use crc::Crc;
 use dpia_lib::{CRC_8_SENSIRON, signal_to_temp};
 use embedded_hal_async::i2c;
@@ -35,7 +34,7 @@ impl Sts4x {
 
         sum_check(&crc, temp, sum, "temperature");
 
-        let temp: u16 = BigEndian::read_u16(temp);
+        let temp = u16::from_be_bytes(temp[..2].try_into().unwrap());
         let temp_c = signal_to_temp(temp);
 
         Ok(temp_c)

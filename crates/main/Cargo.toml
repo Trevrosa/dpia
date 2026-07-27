@@ -51,7 +51,6 @@ cyw43-pio = { version = "0.10.0", features = ["defmt"] }
 
 dpia-lib = { path = "../lib" }
 
-byteorder = { version = "1.5.0", default-features = false }
 static_cell = "2.1.1"
 crc = "3.4.0"
 heapless = "0.9.3"

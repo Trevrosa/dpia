@@ -25,7 +25,7 @@ pub fn sum_check(crc: &crc::Crc<u8>, data: &[u8], sum: u8, item: &'static str) {
     let calc_sum = crc.checksum(data);
     if calc_sum != sum {
         defmt::warn!(
-            "{} checksum did not match (ours: {:#x} != sensor's: {:#x})",
+            "{} checksum did not match (ours: {:#02x} != sensor's: {:#02x})",
             item,
             calc_sum,
             sum
@@ -33,6 +33,12 @@ pub fn sum_check(crc: &crc::Crc<u8>, data: &[u8], sum: u8, item: &'static str) {
     }
 }
 
+#[inline]
 pub fn is_bit_set(val: u32, index: u8) -> bool {
     (val >> index) & 1 == 1
+}
+
+#[inline]
+pub fn u16_from_be_bytes(bytes: &[u8]) -> u16 {
+    u16::from_be_bytes(bytes[..2].try_into().unwrap())
 }

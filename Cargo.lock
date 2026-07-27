@@ -637,7 +637,6 @@ name = "dpia"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "byteorder",
  "cortex-m",
  "cortex-m-rt",
  "crc",
