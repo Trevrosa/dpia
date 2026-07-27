@@ -34,11 +34,12 @@ use crate::data::SensorData;
 use crate::persistent::Data;
 use crate::tasks::cyw43;
 
-use {defmt_rtt as _, panic_probe as _};
+use defmt_rtt as _;
 
 #[cfg(feature = "bt")]
 mod bt;
 pub mod data;
+mod panic_handler;
 mod persistent;
 mod tasks;
 
