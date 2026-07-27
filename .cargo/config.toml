@@ -1,8 +1,8 @@
-[target.thumbv8m.main-none-eabi]
+[target.thumbv8m.main-none-eabihf]
 rustflags = [
     # improve asm codegen
     "-Ctarget-cpu=cortex-m33",
 ]
 
 [env]
-DEFMT_LOG = "info,embedded_tls=off"
+DEFMT_LOG = "info,embedded_tls=error"

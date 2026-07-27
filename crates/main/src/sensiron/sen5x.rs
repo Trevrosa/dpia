@@ -140,12 +140,13 @@ impl Sen5x {
     ///
     /// Fails on an I2c error.
     pub async fn serial_num<I: i2c::I2c>(&self, bus: &mut I) -> Result<[u8; 32], I::Error> {
+        const READ_SERIAL: u16 = 0xD033;
         // format: 2 bytes ascii, 1 byte checksum, ... repeated to byte 48
         let data: [u8; 48] = self
             .0
             .run_cmd(
                 bus,
-                0xD033_u16.to_be_bytes(),
+                READ_SERIAL.to_be_bytes(),
                 Some(Duration::from_millis(20)),
             )
             .await?;
@@ -153,17 +154,12 @@ impl Sen5x {
         let mut serial = [0; 32];
 
         let crc = Crc::<u8>::new(&CRC_8_SENSIRON);
-        for i in 0..16 {
-            // move in 3 byte chunks
-            let chunk = &data[i * 3..i * 3 + 3];
-
-            let ascii = &chunk[0..=1];
-            let sum = chunk[2];
-
+        for (data, out) in data.chunks_exact(3).zip(serial.chunks_exact_mut(2)) {
+            let ascii = &data[0..=1];
+            let sum = data[2];
             sum_check(&crc, ascii, sum, "ascii");
 
-            // for every 3 bytes, we get 2 ascii bytes
-            serial[i * 2..i * 2 + 2].copy_from_slice(ascii);
+            out.copy_from_slice(ascii);
         }
 
         Ok(serial)
@@ -175,8 +171,9 @@ impl Sen5x {
     ///
     /// Fails on an I2c error.
     pub async fn reset<I: i2c::I2c>(&self, bus: &mut I) -> Result<(), I::Error> {
+        const SOFT_RESET: u16 = 0xD304;
         // reset command, takes 100 ms (datasheet 6.1)
-        self.0.start_cmd(bus, 0xD304_u16.to_be_bytes()).await?;
+        self.0.start_cmd(bus, SOFT_RESET.to_be_bytes()).await?;
         Timer::after_millis(100).await;
         Ok(())
     }
