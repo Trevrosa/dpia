@@ -27,12 +27,8 @@ macro_rules! concat_bytes {
             "`combined_len` must fit `slice` and `slice1`"
         );
         let mut combined = [0; $combined_len];
-        for (i, byte) in $slice.iter().enumerate() {
-            combined[i] = *byte;
-        }
-        for (i, byte) in $slice1.iter().enumerate() {
-            combined[$slice.len() + i] = *byte;
-        }
+        combined[0..$slice.len()].copy_from_slice(&$slice);
+        combined[$slice.len()..$slice.len() + $slice1.len()].copy_from_slice(&$slice1);
         combined
     }};
 }
