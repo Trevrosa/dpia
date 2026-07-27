@@ -1,13 +1,11 @@
 use cyw43_pio::PioSpi;
 use defmt::{error, info, warn};
 use dpia::{
-    HttpClientMutex, debug_datetime, ep0159, next_weekend,
+    HttpClientMutex, ep0159,
     sensiron::{sen5x::Sen5x, sht4x::Sht4x, sts4x::Sts4x},
-    sync_epoch_ms, try_forever,
 };
 use embassy_rp::{
     Peri,
-    aon_timer::{self, DayOfWeek},
     gpio::Output,
     i2c::{self, I2c},
     peripherals::{DMA_CH1, I2C0, PIN_13, PIO0, POWMAN, UART0},
@@ -37,6 +35,13 @@ pub async fn net(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'stat
 #[cfg(feature = "powman")]
 #[embassy_executor::task]
 pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpClientMutex) -> ! {
+    use dpia::{
+        sync_epoch_ms,
+        time::{debug_datetime, is_weekend, next_day, next_monday},
+        try_limited,
+    };
+    use embassy_rp::aon_timer::{self, DayOfWeek};
+
     let mut timer = aon_timer::AonTimer::new(
         powman,
         Irqs,
@@ -46,64 +51,77 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
             alarm_wake_mode: aon_timer::AlarmWakeMode::Both,
         },
     );
-
-    info!("[pwr] aon timer set up");
-
-    // timer starts stopped
-    timer.set_counter(try_forever(|| sync_epoch_ms(client), Duration::from_secs(2)).await);
-    timer.start();
-
-    // if we start on a weekday, wait until the weekend to start sleeping, else start immediately
-    let now = timer.now_as_datetime().expect("year should be valid");
-    info!("[pwr] it is now {}", debug_datetime(&now));
-    if matches!(now.day_of_week as u8, 1..=5) {
-        info!("[pwr] it's a weekday, waiting for saturday to sleep");
-
-        let weekend = next_weekend(now);
-
-        info!("[pwr] waiting for {}", debug_datetime(&weekend));
-        timer
-            .set_alarm_at_datetime(weekend)
-            .expect("dt should be in the future");
-        timer.wait_for_alarm().await;
-    }
-
-    info!("[pwr] it's a weekend, sleeping now");
-
-    loop {
-        let now = timer.now_as_datetime().expect("year should be valid");
-        let days = if now.day_of_week == DayOfWeek::Saturday {
-            2
-        } else {
-            1
-        };
-
-        // it should now be saturday 00:00, sleep until next monday 6:00
-        timer
-            .set_alarm_after(Duration::from_secs((days * 60 * 60 * 24) + (6 * 60 * 60)))
-            .unwrap();
-
+    let try_sync = async |client: &'static HttpClientMutex| -> u64 {
+        try_limited(|| sync_epoch_ms(client), Duration::from_secs(2), 15, "sync").await
+    };
+    let sleep = async || {
         info!("[pwr] sleeping soon");
         Timer::after_secs(3).await;
         info!("[pwr] sleeping now");
 
         embassy_rp::clocks::dormant_sleep();
+    };
 
-        // it should now be monday 6:00, wait until saturday 00:00
-        info!("[pwr] woke up, syncing time");
-        timer.stop();
-        timer.set_counter(try_forever(|| sync_epoch_ms(client), Duration::from_secs(2)).await);
-        timer.start();
+    info!("[pwr] aon timer set up");
 
-        let now = timer.now_as_datetime().expect("year should be valid");
+    info!("[pwr] syncing time");
+    // timer starts stopped
+    timer.set_counter(try_sync(client).await);
+    timer.start();
+
+    // if we start on a weekend, sleep until the next week
+    let now = timer.now_as_datetime().expect("year should be valid");
+
+    if is_weekend(&now) {
         info!("[pwr] it is now {}", debug_datetime(&now));
-        let weekend = next_weekend(now);
+        let monday = next_monday(now, 7).timestamp_millis().unwrap();
+        info!(
+            "[pwr] it is a weekend, sleeping to next monday 7am ({})",
+            monday
+        );
+        timer.set_alarm(monday).expect("should not be in the past");
+        sleep().await;
+    }
 
-        info!("[pwr] waiting for {}", debug_datetime(&weekend));
-        timer
-            .set_alarm_at_datetime(weekend)
-            .expect("dt should be in future");
-        timer.wait_for_alarm().await;
+    // it should be a weekday.
+    // if before 3pm, wait for 3pm.
+    // if after 3pm, sleep to next day 7 am.
+    // if after 3pm AND if friday sync time and then sleep to next monday.
+    loop {
+        // it should now be a weekday, check time
+        let now = timer.now_as_datetime().expect("year should be valid");
+        let current_secs =
+            (now.hour as u64 * 60 * 60) + (now.minute as u64 * 60) + (now.second as u64);
+
+        info!("[pwr] it is now {}", debug_datetime(&now));
+
+        let target_secs = if now.hour > 14 {
+            // it is after 3pm, if today is friday, sync time then sleep to next monday, otherwise sleep until next day 7 am.
+            info!("[pwr] it is after 3pm");
+            if now.day_of_week == DayOfWeek::Friday {
+                info!("[pwr] it is friday, syncing time then sleeping to next monday 7am");
+                timer.stop();
+                timer.set_counter(try_sync(client).await);
+                timer.start();
+
+                let target = next_monday(now, 7).timestamp_millis().unwrap();
+                info!("[pwr] which is {}", target);
+                timer.set_alarm(target).expect("not in past");
+            } else {
+                let target = next_day(now, 7).timestamp_millis().unwrap();
+                info!("[pwr] sleeping to tomorrow 7am ({})", target);
+                timer.set_alarm(target).expect("not in past");
+            }
+            sleep().await;
+
+            continue;
+        } else {
+            // it is before 3pm, wait until 3:00 pm
+            15 * 60 * 60
+        };
+
+        info!("[pwr] waiting for 3pm");
+        Timer::after_secs(target_secs - current_secs).await;
     }
 }
 

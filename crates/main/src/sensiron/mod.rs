@@ -38,6 +38,11 @@ pub fn is_bit_set(val: u32, index: u8) -> bool {
     (val >> index) & 1 == 1
 }
 
+/// Read a [`u16`] from `bytes` as big endian.
+///
+/// # Panics
+///
+/// Fails if `bytes.len()` < 2.
 #[inline]
 pub fn u16_from_be_bytes(bytes: &[u8]) -> u16 {
     u16::from_be_bytes(bytes[..2].try_into().unwrap())

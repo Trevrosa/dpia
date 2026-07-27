@@ -4,16 +4,16 @@
 
 use core::num::ParseIntError;
 
-use defmt::{error, info, warn};
+use defmt::{error, info, panic, warn};
 use embassy_net::{dns::DnsSocket, tcp::client::TcpClient};
-use embassy_rp::{aon_timer::DateTime, spinlock_mutex::SpinlockRawMutex};
+use embassy_rp::spinlock_mutex::SpinlockRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
-use heapless::{String, format};
 use reqwless::{client::HttpClient, request::Method, response::StatusCode};
 
 pub mod ep0159;
 pub mod sensiron;
+pub mod time;
 
 pub type HttpClientMutex = Mutex<
     SpinlockRawMutex<0>,
@@ -21,21 +21,34 @@ pub type HttpClientMutex = Mutex<
 >;
 
 /// Run a future that returns a [`Result`] until it returns [`Ok`] with a `delay` between tries.
-pub async fn try_forever<T, E, F>(f: impl Fn() -> F, delay: Duration) -> T
+///
+/// # Panics
+///
+/// Panics if we reach `max_tries`.
+pub async fn try_limited<T, E>(
+    mut f: impl AsyncFnMut() -> Result<T, E>,
+    delay: Duration,
+    max_tries: usize,
+    task_name: &'static str,
+) -> T
 where
     E: defmt::Format,
-    F: Future<Output = Result<T, E>>,
 {
     let mut i = 1;
     loop {
-        match f().await {
-            Ok(res) => break res,
-            Err(err) => error!("failed: {}", err),
+        if i == max_tries {
+            panic!("[{}] reached max tries ({})", task_name, max_tries);
         }
 
-        i += 1;
-        warn!("try #{}", i);
+        match f().await {
+            Ok(res) => break res,
+            Err(err) => error!("[{}] failed: {}", task_name, err),
+        }
+
         Timer::after(delay).await;
+
+        i += 1;
+        warn!("[{}] try #{}", task_name, i);
     }
 }
 
@@ -89,40 +102,4 @@ pub async fn sync_epoch_ms(client: &'static HttpClientMutex) -> Result<u64, Sync
     info!("[sync] synced time is {}", time);
 
     Ok(time)
-}
-
-/// saturday, midnight
-///
-/// # Panics
-///
-/// Fails if the `now` is in the weekend.
-pub fn next_weekend(mut now: DateTime) -> DateTime {
-    let day_of_week = now.day_of_week as u8;
-
-    assert!(matches!(day_of_week, 1..=5));
-
-    // saturday is 6, today is monday-friday (1..=5), so 6-today is always positive
-    // what if next weekend is in next month (day >= 31)? should be ok if no chrono
-    now.day += 6 - day_of_week;
-
-    now.hour = 0;
-    now.minute = 0;
-    now.second = 0;
-
-    now
-}
-
-// max should be 35
-
-#[expect(
-    clippy::missing_panics_doc,
-    reason = "dt should reasonably be past the unix epoch"
-)]
-pub fn debug_datetime(dt: &DateTime) -> String<40> {
-    let timestamp = dt.timestamp_millis().expect("should be past the epoch");
-    format!(
-        "{}-{}-{} {:02}:{:02}:{:02} ({})",
-        dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, timestamp
-    )
-    .unwrap()
 }

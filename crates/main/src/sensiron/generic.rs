@@ -8,8 +8,6 @@ use embedded_hal_async::i2c;
 use crate::sensiron::sum_check;
 
 /// A generic Sensiron sensor. A custom implementation can be created with the macro `make_sensor!(NAME, DOCS, MAX_SIZE)`.
-///
-/// `MAX_SIZE` is the max size (in bytes) of the return data (e.g. `6` for `SHT4x` and `STS4x`).
 #[derive(Clone, Copy)]
 pub struct Sensor {
     addr: u8,

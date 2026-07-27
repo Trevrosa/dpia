@@ -7,7 +7,8 @@ use dpia_lib::{CRC_8_SENSIRON, signal_to_rh, signal_to_temp};
 use embedded_hal_async::i2c;
 
 use crate::{
-    make_sensor, sensiron::{generic::Precision, sum_check, u16_from_be_bytes},
+    make_sensor,
+    sensiron::{generic::Precision, sum_check, u16_from_be_bytes},
 };
 
 #[derive(defmt::Format)]

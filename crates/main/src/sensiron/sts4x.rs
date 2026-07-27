@@ -8,7 +8,7 @@ use embedded_hal_async::i2c;
 
 use crate::{
     make_sensor,
-    sensiron::{generic::Precision, sum_check},
+    sensiron::{generic::Precision, sum_check, u16_from_be_bytes},
 };
 
 make_sensor!(Sts4x, "the `STS4x` temperature sensor");
@@ -34,7 +34,7 @@ impl Sts4x {
 
         sum_check(&crc, temp, sum, "temperature");
 
-        let temp = u16::from_be_bytes(temp[..2].try_into().unwrap());
+        let temp = u16_from_be_bytes(temp);
         let temp_c = signal_to_temp(temp);
 
         Ok(temp_c)

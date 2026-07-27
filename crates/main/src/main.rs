@@ -153,12 +153,13 @@ async fn main(spawner: Spawner) -> ! {
         use core::str::FromStr;
         use cyw43::JoinOptions;
         use cyw43::ScanOptions;
-        use defmt::error;
+        use dpia::try_limited;
         use embassy_net::{
             DhcpConfig, StackResources,
             dns::DnsSocket,
             tcp::client::{TcpClient, TcpClientState},
         };
+        use embassy_time::Duration;
         use reqwless::client::{HttpClient, TlsConfig};
 
         info!("scanning for wifi networks");
@@ -184,23 +185,17 @@ async fn main(spawner: Spawner) -> ! {
 
         info!("joining `{}`", wanted_ssid);
         const WIFI_JOIN_TRIES: usize = 8;
-        for i in 0..=WIFI_JOIN_TRIES {
-            if i == WIFI_JOIN_TRIES {
-                defmt::panic!("couldnt join wifi in {} tries", WIFI_JOIN_TRIES);
-            }
-
-            let join = control
-                .join(wanted_ssid, JoinOptions::new(ssid_pass.as_bytes()))
-                .await;
-
-            if let Err(err) = join {
-                error!("failed to join: {}", err);
-            } else {
-                break;
-            }
-
-            info!("retrying");
-        }
+        try_limited(
+            async || {
+                control
+                    .join(wanted_ssid, JoinOptions::new(ssid_pass.as_bytes()))
+                    .await
+            },
+            Duration::from_secs(1),
+            WIFI_JOIN_TRIES,
+            "wifi",
+        )
+        .await;
         info!("joined successfully!");
 
         control.gpio_set(0, true).await;
