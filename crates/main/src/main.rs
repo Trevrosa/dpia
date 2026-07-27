@@ -8,13 +8,14 @@ use defmt::{info, unwrap, warn};
 use embassy_executor::Spawner;
 use embassy_futures::yield_now;
 use embassy_net::{Stack, StaticConfigV4};
+use embassy_rp::binary_info::{
+    EntryAddr, rp_cargo_version, rp_program_build_attribute, rp_program_name,
+};
 use embassy_rp::peripherals::UART0;
 use embassy_rp::spinlock_mutex::SpinlockRawMutex;
 use embassy_rp::uart;
 use embassy_rp::{
-    aon_timer,
-    binary_info::{EntryAddr, rp_cargo_version, rp_program_build_attribute, rp_program_name},
-    bind_interrupts,
+    aon_timer, bind_interrupts,
     clocks::RoscRng,
     config::Config,
     dma,

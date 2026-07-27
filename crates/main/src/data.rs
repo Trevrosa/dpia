@@ -8,7 +8,7 @@ use dpia::{
 use dpia_lib::display::{fmt_f32, fmt_pad_u8};
 use embassy_rp::i2c;
 use heapless::String;
-use reqwless::request::Method;
+use reqwless::request::{Method, RequestBuilder};
 
 use crate::tasks::{RpI2C0Async, RpMax7219};
 
@@ -98,7 +98,10 @@ pub async fn submit(
     let query = data_to_query(data);
 
     let mut rx_buf = [0u8; 1024];
-    let mut req = client.request(Method::POST, query.as_str()).await?;
+    let mut req = client
+        .request(Method::POST, query.as_str())
+        .await?
+        .headers(&[("token", include_str!("../config/backend_token"))]);
 
     let resp = req.send(&mut rx_buf).await?;
     info!("[data] got {}", resp.status);
