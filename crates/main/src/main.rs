@@ -46,7 +46,7 @@ mod tasks;
 
 #[used]
 #[unsafe(link_section = ".bi_entries")]
-pub static PICOTOOL_ENTRIES: [EntryAddr; 3] = [
+static PICOTOOL_ENTRIES: [EntryAddr; 3] = [
     rp_program_name!(c"temperature"),
     rp_cargo_version!(),
     rp_program_build_attribute!(),

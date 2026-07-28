@@ -97,14 +97,7 @@ async fn handle_connection(
                         );
                         write.reject(AttErrorCode::WRITE_NOT_PERMITTED)
                     }
-                    // GattEvent::Other(other) => {
-                    //     let a = other.payload();
-                    //     let client = a.incoming();
-                    //     match client {
-                    //         trouble_host::att::AttClient::Request()
-                    //     }
-                    // },
-                    _ => event.reject(AttErrorCode::REQUEST_NOT_SUPPORTED),
+                    _ => event.accept(),
                 };
 
                 match reply {
@@ -130,7 +123,7 @@ async fn advertise<'vals, 'server, C: Controller>(
         &[
             // flags must be set first and must include BR_EDR_NOT_SUPPORTED
             AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
-            AdStructure::ServiceUuids16(&[service::ENVIRONMENTAL_SENSING.to_be_bytes()]),
+            AdStructure::ServiceUuids16(&[service::ENVIRONMENTAL_SENSING.to_le_bytes()]),
             AdStructure::CompleteLocalName(b"dpia"),
         ],
         &mut adv_data[..],
