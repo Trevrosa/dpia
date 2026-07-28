@@ -120,8 +120,9 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
             15 * 60 * 60
         };
 
-        info!("[pwr] waiting for 3pm");
-        Timer::after_secs(target_secs - current_secs).await;
+        let sleep_time = target_secs - current_secs;
+        info!("[pwr] waiting for 3pm (in {} secs)", sleep_time);
+        Timer::after_secs(sleep_time).await;
     }
 }
 

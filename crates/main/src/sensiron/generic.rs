@@ -77,7 +77,9 @@ impl Sensor {
         bus: &mut I,
         cmd: u8,
     ) -> Result<u32, I::Error> {
-        let data: [u8; 6] = self.run_cmd(bus, [cmd], None).await?;
+        let data: [u8; 6] = self
+            .run_cmd(bus, [cmd], Some(Duration::from_millis(10)))
+            .await?;
 
         let serial = &data[0..=1];
         let sum = data[2];
