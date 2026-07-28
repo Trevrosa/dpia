@@ -20,7 +20,7 @@ use trouble_host::{
     },
 };
 
-use crate::GlobalSensorDataMutex;
+use crate::{GlobalSensorDataMutex, data::SensorData};
 
 #[gatt_server]
 pub struct Server {
@@ -31,9 +31,19 @@ pub struct Server {
 pub struct SensorService {
     #[descriptor(uuid = descriptors::VALID_RANGE, read, value = [0, 100])]
     #[characteristic(uuid = characteristic::HUMIDITY, read)]
-    relative_humidity: u8,
+    humidity: u8,
     #[characteristic(uuid = characteristic::TEMPERATURE, read)]
-    air_temperature: f32,
+    air_temp: f32,
+    #[characteristic(uuid = characteristic::HIGH_TEMPERATURE, read)]
+    ground_temp: f32,
+    #[characteristic(uuid = characteristic::VOC_CONCENTRATION, read)]
+    voc: u16,
+    #[characteristic(uuid = characteristic::NITROGEN_DIOXIDE_CONCENTRATION, read)]
+    nox: u16,
+    #[characteristic(uuid = characteristic::PARTICULATE_MATTER_PM10_CONCENTRATION, read)]
+    pm10: u16,
+    #[characteristic(uuid = characteristic::PARTICULATE_MATTER_PM25_CONCENTRATION, read)]
+    pm2_5: u16,
 }
 
 pub async fn server_loop<'vals, C: Controller>(
@@ -57,35 +67,53 @@ pub async fn server_loop<'vals, C: Controller>(
     }
 }
 
+fn update_server(data: SensorData, server: &Server<'_>) -> Result<(), trouble_host::Error> {
+    macro_rules! set_val {
+        ($field:ident) => {
+            if let Some(val) = data.$field {
+                info!("{}: {}", stringify!($field), val);
+                server.sensor_data.$field.set(server, &val)?;
+            }
+        };
+    }
+
+    set_val!(humidity);
+    set_val!(air_temp);
+    set_val!(ground_temp);
+    set_val!(voc);
+    set_val!(nox);
+    set_val!(pm10);
+    set_val!(pm2_5);
+
+    Ok(())
+}
+
 async fn handle_connection(
     server: &Server<'_>,
     conn: &GattConnection<'_, '_, DefaultPacketPool>,
     global_data: &'static GlobalSensorDataMutex,
 ) -> Result<(), trouble_host::Error> {
-    let humidity = server.sensor_data.relative_humidity;
+    let handle_range = server.sensor_data.handle_range();
     let disconnect_reason = loop {
         match conn.next().await {
             GattConnectionEvent::Disconnected { reason } => break reason,
             GattConnectionEvent::Gatt { event } => {
                 let reply = match event {
                     GattEvent::Read(read) => {
-                        if read.handle() == humidity.handle {
-                            info!("[gatt] got read to humidity");
+                        if handle_range.contains(&read.handle()) {
                             'read_global: {
                                 let Ok(global_data) = global_data.try_lock() else {
                                     warn!("[gatt] global_data was locked");
                                     break 'read_global;
                                 };
-
-                                if let Some(val) = global_data.humidity
-                                    && let Err(err) = humidity.set(server, &val)
-                                {
-                                    warn!("[gatt] failed to update humidity from global: {}", err);
+                                if let Err(err) = update_server(*global_data, &server) {
+                                    warn!("[gatt] failed to update data from global: {}", err);
                                 }
                             }
+                            info!("[gatt] got read to sensor data");
                             read.accept()
                         } else {
-                            warn!("[gatt] got improper read to handle {}", read.handle());
+                            warn!("[gatt] got read to invalid handle {:#x}", read.handle());
                             read.reject(AttErrorCode::INVALID_HANDLE)
                         }
                     }
