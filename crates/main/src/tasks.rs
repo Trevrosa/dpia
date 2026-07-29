@@ -35,11 +35,8 @@ pub async fn net(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'stat
 #[cfg(feature = "powman")]
 #[embassy_executor::task]
 pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpClientMutex) -> ! {
-    use dpia::{
-        sync_epoch_ms,
-        time::{debug_datetime, is_weekend, next_day, next_monday},
-        try_limited,
-    };
+    use dpia::time::{debug_datetime, is_weekend, next_day, next_monday};
+    use dpia::{sync_epoch_ms, try_limited, power::dormant_sleep};
     use embassy_rp::aon_timer::{self, DayOfWeek};
 
     let mut timer = aon_timer::AonTimer::new(
@@ -53,13 +50,6 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
     );
     let try_sync = async |client: &'static HttpClientMutex| -> u64 {
         try_limited(|| sync_epoch_ms(client), Duration::from_secs(2), 15, "sync").await
-    };
-    let sleep = async || {
-        info!("[pwr] sleeping soon");
-        Timer::after_secs(3).await;
-        info!("[pwr] sleeping now");
-
-        embassy_rp::clocks::dormant_sleep();
     };
 
     info!("[pwr] aon timer set up");
@@ -80,7 +70,7 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
             monday
         );
         timer.set_alarm(monday).expect("should not be in the past");
-        sleep().await;
+        dormant_sleep();
     }
 
     // it should be a weekday.
@@ -112,7 +102,7 @@ pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpC
                 info!("[pwr] sleeping to tomorrow 7am ({})", target);
                 timer.set_alarm(target).expect("not in past");
             }
-            sleep().await;
+            dormant_sleep();
 
             continue;
         } else {

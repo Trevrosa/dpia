@@ -65,17 +65,21 @@ pub type GlobalSensorDataMutex = Mutex<SpinlockRawMutex<1>, SensorData>;
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) -> ! {
-    let p = embassy_rp::init(Config::default());
+    let mut p = embassy_rp::init(Config::default());
     let mut rng = RoscRng;
 
     info!("Hello, World!!");
 
     {
-        let mut data = Data::read();
-        info!("{}", data);
-        data.boot_count = data.boot_count.saturating_add(1);
         let start = Instant::now();
-        if let Err(err) = data.write(p.FLASH) {
+        let modify = Data::modify(
+            |data| {
+                info!("{}", data);
+                data.boot_count = data.boot_count.saturating_add(1);
+            },
+            p.FLASH.reborrow(),
+        );
+        if let Err(err) = modify {
             warn!("failed to save to flash: {}", err);
         } else {
             info!(
@@ -84,6 +88,9 @@ async fn main(spawner: Spawner) -> ! {
             );
         }
     }
+
+    // we dont use the usb
+    dpia::power::set_usb_state(true);
 
     // MONITOR POWER
     #[cfg(feature = "monitor-bat")]
@@ -152,8 +159,7 @@ async fn main(spawner: Spawner) -> ! {
     #[cfg(feature = "wifi")]
     let client = {
         use core::str::FromStr;
-        use cyw43::JoinOptions;
-        use cyw43::ScanOptions;
+        use cyw43::{JoinOptions, ScanOptions};
         use dpia::try_limited;
         use embassy_net::{
             DhcpConfig, StackResources,

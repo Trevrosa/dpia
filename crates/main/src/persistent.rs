@@ -61,6 +61,12 @@ impl Data {
         crc32().checksum(bytes)
     }
 
+    pub fn modify(f: impl Fn(&mut Self), flash: Peri<'_, FLASH>) -> Result<(), flash::Error> {
+        let mut data = Self::read();
+        f(&mut data);
+        data.write(flash)
+    }
+
     /// Reads from the section and checks its crc32. If it does not match, returns an empty [`Data`].
     pub fn read() -> Self {
         let flash_ptr: *const Data = (&raw const __persistent_flash_start).cast();
