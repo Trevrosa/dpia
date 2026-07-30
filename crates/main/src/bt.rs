@@ -106,7 +106,7 @@ async fn handle_connection(
                                     warn!("[gatt] global_data was locked");
                                     break 'read_global;
                                 };
-                                if let Err(err) = update_server(*global_data, &server) {
+                                if let Err(err) = update_server(*global_data, server) {
                                     warn!("[gatt] failed to update data from global: {}", err);
                                 }
                             }

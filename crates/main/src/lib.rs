@@ -6,15 +6,15 @@ use core::num::ParseIntError;
 
 use defmt::{error, info, panic, warn};
 use embassy_net::{dns::DnsSocket, tcp::client::TcpClient};
-use embassy_rp::{spinlock_mutex::SpinlockRawMutex};
+use embassy_rp::spinlock_mutex::SpinlockRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Timer};
 use reqwless::{client::HttpClient, request::Method, response::StatusCode};
 
 pub mod ep0159;
+pub mod power;
 pub mod sensiron;
 pub mod time;
-pub mod power;
 
 pub type HttpClientMutex = Mutex<
     SpinlockRawMutex<0>,

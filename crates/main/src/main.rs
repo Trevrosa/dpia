@@ -90,7 +90,7 @@ async fn main(spawner: Spawner) -> ! {
     }
 
     // we dont use the usb
-    dpia::power::set_usb_state(true);
+    dpia::power::set_usb_state(false);
 
     // MONITOR POWER
     #[cfg(feature = "monitor-bat")]

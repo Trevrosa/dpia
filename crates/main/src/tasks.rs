@@ -36,7 +36,7 @@ pub async fn net(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'stat
 #[embassy_executor::task]
 pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpClientMutex) -> ! {
     use dpia::time::{debug_datetime, is_weekend, next_day, next_monday};
-    use dpia::{sync_epoch_ms, try_limited, power::dormant_sleep};
+    use dpia::{power::dormant_sleep, sync_epoch_ms, try_limited};
     use embassy_rp::aon_timer::{self, DayOfWeek};
 
     let mut timer = aon_timer::AonTimer::new(

@@ -1,4 +1,4 @@
-///! adapted from <https://github.com/antroids/epd-frame-rs-2/> and embassy_rp
+//! adapted from <https://github.com/antroids/epd-frame-rs-2/> and embassy_rp
 
 use embassy_rp::pac::{
     self,
@@ -40,7 +40,7 @@ macro_rules! set {
 
 const POWMAN_PASSWORD: u32 = 0x5AFE << 16;
 
-// FIXME: works but sometimes breaks debug probing after waking 
+// FIXME: works but sometimes breaks debug probing after waking
 
 /// An alarm should be set with the aon timer before calling this.
 pub fn dormant_sleep() {
@@ -136,7 +136,7 @@ pub fn dormant_sleep() {
 
     pac::ROSC
         .dormant()
-        .write_value(pac::rosc::regs::Dormant(0x636f6d61));
+        .write_value(pac::rosc::regs::Dormant(0x636f_6d61));
 
     // waking up after dormant
 
@@ -147,6 +147,8 @@ pub fn dormant_sleep() {
 
     set_sleepdeep(false);
     // set_gpio_pull(true);
+
+    cortex_m::asm::delay(100);
 }
 
 pub fn set_usb_state(enabled: bool) {
