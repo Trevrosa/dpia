@@ -1,4 +1,4 @@
-//! adapted from <https://github.com/antroids/epd-frame-rs-2/> and embassy_rp
+//! adapted from <https://github.com/antroids/epd-frame-rs-2/> and `embassy_rp`
 
 use embassy_rp::pac::{
     self,

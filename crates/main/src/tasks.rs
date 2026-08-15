@@ -130,7 +130,18 @@ pub async fn data_collector(
     client: &'static HttpClientMutex,
     global_data: &'static GlobalSensorDataMutex,
 ) -> ! {
+    const COLLECTION_INTERVAL: Duration = Duration::from_secs(60);
+    const SUCCESSIVE_SUBMIT_FAIL_LIMIT: u32 = 5;
+    let mut submit_fails = 0;
+
     let mut do_everything = async || {
+        if submit_fails > SUCCESSIVE_SUBMIT_FAIL_LIMIT {
+            defmt::panic!(
+                "failed to submit too many ({}) times",
+                SUCCESSIVE_SUBMIT_FAIL_LIMIT
+            );
+        }
+
         info!("collecting");
         let data = collect(&mut i2c, humid, temp, air).await;
         info!("got data: {:?}", data);
@@ -139,7 +150,10 @@ pub async fn data_collector(
             *global_data = data;
         }
         if let Err(err) = submit(client, &data).await {
+            submit_fails += 1;
             error!("failed to submit: {}", err);
+        } else {
+            submit_fails = 0;
         }
         if let Some(ref mut displays) = displays {
             show_data(&data, displays);
@@ -149,7 +163,7 @@ pub async fn data_collector(
     do_everything().await;
 
     loop {
-        Timer::after_secs(30).await;
+        Timer::after(COLLECTION_INTERVAL).await;
         do_everything().await;
     }
 }
