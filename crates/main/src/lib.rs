@@ -21,7 +21,7 @@ pub type HttpClientMutex = Mutex<
     HttpClient<'static, TcpClient<'static, 3, 2048, 2048>, DnsSocket<'static>>,
 >;
 
-/// Run a future that returns a [`Result`] until it returns [`Ok`] with a `delay` between tries.
+/// Run a future that returns a [`Result`] until it returns [`Ok`] with a `delay` between tries, returning the result.
 ///
 /// # Panics
 ///

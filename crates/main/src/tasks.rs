@@ -3,6 +3,7 @@ use defmt::{error, info, warn};
 use dpia::{
     HttpClientMutex, ep0159,
     sensiron::{sen5x::Sen5x, sht4x::Sht4x, sts4x::Sts4x},
+    try_limited,
 };
 use embassy_rp::{
     Peri,
@@ -36,7 +37,7 @@ pub async fn net(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'stat
 #[embassy_executor::task]
 pub async fn power_manager(powman: Peri<'static, POWMAN>, client: &'static HttpClientMutex) -> ! {
     use dpia::time::{debug_datetime, is_weekend, next_day, next_monday};
-    use dpia::{power::dormant_sleep, sync_epoch_ms, try_limited};
+    use dpia::{power::dormant_sleep, sync_epoch_ms};
     use embassy_rp::aon_timer::{self, DayOfWeek};
 
     let mut timer = aon_timer::AonTimer::new(
