@@ -171,8 +171,8 @@ async fn main(spawner: Spawner) -> ! {
 
         info!("scanning for wifi networks");
 
-        let wanted_ssid = include_str!("../config/wanted_ssid");
-        let ssid_pass = include_str!("../config/ssid_pass");
+        let wanted_ssid = include_str!("../config/wanted_ssid").trim();
+        let ssid_pass = include_str!("../config/ssid_pass").trim();
 
         {
             let mut scanner = control.scan(ScanOptions::default()).await;
