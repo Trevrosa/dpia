@@ -26,6 +26,7 @@ use embassy_rp::{
 };
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Instant, Timer};
+use embedded_alloc::LlffHeap;
 use static_cell::StaticCell;
 
 #[cfg(feature = "wifi")]
@@ -36,6 +37,11 @@ use crate::persistent::Data;
 use crate::tasks::cyw43;
 
 use defmt_rtt as _;
+extern crate alloc;
+
+/// should only be used in the `data` module for parsing
+#[global_allocator]
+static HEAP: LlffHeap = LlffHeap::empty();
 
 #[cfg(feature = "bt")]
 mod bt;
@@ -75,7 +81,7 @@ async fn main(spawner: Spawner) -> ! {
         let modify = Data::modify(
             |data| {
                 info!("{}", data);
-                data.boot_count = data.boot_count.saturating_add(1);
+                data.boot_count = data.boot_count.wrapping_add(1);
             },
             p.FLASH.reborrow(),
         );

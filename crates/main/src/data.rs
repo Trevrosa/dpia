@@ -1,4 +1,4 @@
-use core::fmt::Write;
+use core::{fmt::Write, range::RangeInclusive, str::FromStr};
 
 use defmt::{error, info, warn};
 use dpia::{
@@ -7,12 +7,158 @@ use dpia::{
 };
 use dpia_lib::display::{fmt_f32, fmt_pad_u8};
 use embassy_rp::i2c;
-use heapless::String;
+use heapless::{String, index_map::FnvIndexMap};
+use miniserde::Deserialize;
 use reqwless::request::{Method, RequestBuilder};
 
 use crate::tasks::{RpI2C0Async, RpMax7219};
 
 // FIXME: could use <https://crates.io/crates/ufmt>
+
+#[derive(defmt::Format, Default, Clone, Copy)]
+pub struct SensorData {
+    pub air_temp: Option<f32>,
+    pub ground_temp: Option<f32>,
+    pub humidity: Option<u8>,
+    pub nox: Option<u16>,
+    pub voc: Option<u16>,
+    pub pm10: Option<u16>,
+    pub pm2_5: Option<u16>,
+}
+
+#[derive(Default)]
+pub struct SafetyDefinitions {
+    /// temperature
+    high: u8,
+    /// temperature: rules
+    inner: FnvIndexMap<u8, [Rule; 3], 10>,
+}
+
+#[derive(Clone, Copy, Default)]
+pub enum Safety {
+    Ok,
+    Caution,
+    #[default]
+    Danger,
+}
+
+impl FromStr for Safety {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let val = match s {
+            "ok" => Self::Ok,
+            "caution" => Self::Caution,
+            "danger" => Self::Danger,
+            _ => return Err(()),
+        };
+        Ok(val)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Rule {
+    level: Safety,
+    humidity_range: RangeInclusive<u8>,
+}
+
+impl Rule {
+    fn new() -> Self {
+        Self {
+            level: Safety::default(),
+            humidity_range: RangeInclusive {
+                start: 255,
+                last: 255,
+            },
+        }
+    }
+}
+
+pub enum ParseError {
+    Deserialize(miniserde::Error),
+    /// error msg
+    Format(&'static str),
+}
+
+impl From<miniserde::Error> for ParseError {
+    #[inline]
+    fn from(value: miniserde::Error) -> Self {
+        Self::Deserialize(value)
+    }
+}
+
+impl From<()> for ParseError {
+    #[inline]
+    fn from(_: ()) -> Self {
+        Self::Format("unexpected value")
+    }
+}
+
+impl SafetyDefinitions {
+    pub fn parse(input: &str) -> Result<Self, ParseError> {
+        #[derive(Deserialize)]
+        struct RawDef {
+            temperature: u8,
+            rules: [Option<RawRule>; 5],
+        }
+
+        #[derive(Deserialize)]
+        struct RawRule {
+            humidity: [u8; 2],
+            level: alloc::string::String,
+        }
+
+        let mut new = Self::default();
+
+        let parsed: [Option<RawDef>; 10] = miniserde::json::from_str(input)?;
+        let mut high_temp = 0;
+        for parsed in parsed.into_iter().flatten() {
+            if parsed.temperature > high_temp {
+                high_temp = parsed.temperature;
+            }
+
+            for (i, rule) in parsed.rules.into_iter().flatten().enumerate() {
+                let rule_range = RangeInclusive {
+                    start: rule.humidity[0],
+                    last: rule.humidity[1],
+                };
+
+                let entry = new
+                    .inner
+                    .entry(parsed.temperature)
+                    .or_insert_with(|| [Rule::new(); 3]);
+
+                if let Ok(existing) = entry {
+                    existing[i].humidity_range = rule_range;
+                    existing[i].level = rule.level.parse()?;
+                } else {
+                    // `parsed` can be at most length 10, so the map will never be at capacity
+                    unreachable!();
+                }
+            }
+        }
+
+        new.high = high_temp;
+
+        Ok(new)
+    }
+
+    pub fn safety_of(&self, temperature: f32, humidity: u8) -> Safety {
+        let temperature = temperature as u8;
+        assert!(temperature < 100);
+        let Some(rules) = self.inner.get(&temperature) else {
+            return if temperature > self.high {
+                Safety::Danger
+            } else {
+                Safety::Ok
+            };
+        };
+        rules
+            .iter()
+            .find(|r| r.humidity_range.contains(&humidity))
+            .map(|r| r.level)
+            .unwrap_or(Safety::Ok)
+    }
+}
 
 #[expect(
     clippy::missing_panics_doc,
@@ -38,17 +184,6 @@ pub fn show_data(data: &SensorData, displays: &mut RpMax7219<'static>) {
             warn!("[data] failed to show humidity digits");
         }
     }
-}
-
-#[derive(defmt::Format, Default, Clone, Copy)]
-pub struct SensorData {
-    pub air_temp: Option<f32>,
-    pub ground_temp: Option<f32>,
-    pub humidity: Option<u8>,
-    pub nox: Option<u16>,
-    pub voc: Option<u16>,
-    pub pm10: Option<u16>,
-    pub pm2_5: Option<u16>,
 }
 
 pub async fn collect(i2c: &mut RpI2C0Async, humid: Sht4x, temp: Sts4x, air: Sen5x) -> SensorData {
