@@ -32,7 +32,7 @@ pub struct SafetyDefinitions {
     /// temperature
     high: u8,
     /// temperature: rules
-    inner: FnvIndexMap<u8, [Rule; 3], 10>,
+    inner: FnvIndexMap<u8, [Rule; 3], 8>,
 }
 
 #[derive(Clone, Copy, Default)]
