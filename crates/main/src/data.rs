@@ -3,6 +3,7 @@ use core::{fmt::Write, range::RangeInclusive, str::FromStr};
 use defmt::{error, info, warn};
 use dpia::{
     HttpClientMutex,
+    errors::ParseError,
     sensiron::{generic::Precision, sen5x::Sen5x, sht4x::Sht4x, sts4x::Sts4x},
 };
 use dpia_lib::display::{fmt_f32, fmt_pad_u8};
@@ -73,26 +74,6 @@ impl Rule {
     }
 }
 
-pub enum ParseError {
-    Deserialize(miniserde::Error),
-    /// error msg
-    Format(&'static str),
-}
-
-impl From<miniserde::Error> for ParseError {
-    #[inline]
-    fn from(value: miniserde::Error) -> Self {
-        Self::Deserialize(value)
-    }
-}
-
-impl From<()> for ParseError {
-    #[inline]
-    fn from(_: ()) -> Self {
-        Self::Format("unexpected value")
-    }
-}
-
 impl SafetyDefinitions {
     pub fn parse(input: &str) -> Result<Self, ParseError> {
         #[derive(Deserialize)]
@@ -155,8 +136,7 @@ impl SafetyDefinitions {
         rules
             .iter()
             .find(|r| r.humidity_range.contains(&humidity))
-            .map(|r| r.level)
-            .unwrap_or(Safety::Ok)
+            .map_or(Safety::Ok, |r| r.level)
     }
 }
 

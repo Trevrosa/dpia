@@ -5,6 +5,8 @@
 use cyw43::{A4, Aligned};
 use cyw43_pio::{PioSpi, RM2_CLOCK_DIVIDER};
 use defmt::{info, unwrap, warn};
+use dpia::errors::{ParseError, RequestError, SyncError};
+use dpia::try_limited;
 use embassy_executor::Spawner;
 use embassy_futures::yield_now;
 use embassy_net::{Stack, StaticConfigV4};
@@ -25,14 +27,15 @@ use embassy_rp::{
     pio::{self, Pio},
 };
 use embassy_sync::mutex::Mutex;
-use embassy_time::{Instant, Timer};
+use embassy_time::{Duration, Instant, Timer};
 use embedded_alloc::LlffHeap;
+use reqwless::request::Method;
 use static_cell::StaticCell;
 
 #[cfg(feature = "wifi")]
 use dpia::HttpClientMutex;
 
-use crate::data::SensorData;
+use crate::data::{SafetyDefinitions, SensorData};
 use crate::persistent::Data;
 use crate::tasks::cyw43;
 
@@ -166,13 +169,11 @@ async fn main(spawner: Spawner) -> ! {
     let client = {
         use core::str::FromStr;
         use cyw43::{JoinOptions, ScanOptions};
-        use dpia::try_limited;
         use embassy_net::{
             DhcpConfig, StackResources,
             dns::DnsSocket,
             tcp::client::{TcpClient, TcpClientState},
         };
-        use embassy_time::Duration;
         use reqwless::client::{HttpClient, TlsConfig};
 
         info!("scanning for wifi networks");
@@ -267,6 +268,14 @@ async fn main(spawner: Spawner) -> ! {
         )))
     };
 
+    let safety_defs = try_limited(
+        async || get_safety_defs(client).await,
+        Duration::from_secs(2),
+        5,
+        "safety",
+    )
+    .await;
+
     // SENSORS
     #[cfg(feature = "i2c")]
     {
@@ -278,6 +287,10 @@ async fn main(spawner: Spawner) -> ! {
         };
         use embassy_rp::i2c::I2c;
         use max7219::MAX7219;
+
+        use crate::tasks::MultiLed;
+        #[cfg(feature = "wifi")]
+        use crate::tasks::Sensors;
 
         let mut i2c_config = i2c::Config::default();
         i2c_config.scl_pullup = false;
@@ -300,6 +313,12 @@ async fn main(spawner: Spawner) -> ! {
             air_serial
         );
 
+        let sensors = Sensors {
+            humidity,
+            temp,
+            air,
+        };
+
         // DISPLAY
         let sck = Output::new(p.PIN_2, Level::Low);
         let mosi = Output::new(p.PIN_3, Level::Low);
@@ -309,16 +328,19 @@ async fn main(spawner: Spawner) -> ! {
             error!("failed to init max7219");
         }
 
+        // STATUS LEDs
+        let leds = MultiLed::new(p.PIN_10, p.PIN_11, p.PIN_12);
+
         // DATA COLLECTION
         #[cfg(feature = "wifi")]
         spawner.spawn(unwrap!(tasks::data_collector(
             i2c,
-            humidity,
-            temp,
-            air,
+            sensors,
             displays,
+            leds,
             client,
-            global_sensor_data
+            global_sensor_data,
+            safety_defs
         )));
     }
 
@@ -343,4 +365,27 @@ async fn wait_for_config(stack: Stack<'static>) -> StaticConfigV4 {
         }
         yield_now().await;
     }
+}
+
+async fn get_safety_defs(
+    client: &'static HttpClientMutex,
+) -> Result<SafetyDefinitions, SyncError<ParseError>> {
+    let client = &mut *client.lock().await;
+
+    let mut rx_buf = [0u8; 1024];
+    let mut req = client
+        .request(Method::GET, "https://dpia.trevrosa.dev/safety")
+        .await?;
+
+    let resp = req.send(&mut rx_buf).await?;
+    info!("[safety] got {}", resp.status);
+
+    if !resp.status.is_successful() {
+        return Err(SyncError::Request(RequestError::Http(resp.status)));
+    }
+
+    let body = resp.body().read_to_end().await?;
+    let body = str::from_utf8(body)?;
+
+    Ok(SafetyDefinitions::parse(body)?)
 }

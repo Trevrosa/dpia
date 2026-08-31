@@ -7,7 +7,7 @@ use dpia::{
 };
 use embassy_rp::{
     Peri,
-    gpio::Output,
+    gpio::{Level, Output, Pin},
     i2c::{self, I2c},
     peripherals::{DMA_CH1, I2C0, PIN_13, PIO0, POWMAN, UART0},
     uart,
@@ -18,7 +18,7 @@ use max7219::MAX7219;
 
 use crate::{
     GlobalSensorDataMutex, Irqs,
-    data::{collect, show_data, submit},
+    data::{Safety, SafetyDefinitions, collect, show_data, submit},
 };
 
 #[embassy_executor::task]
@@ -121,19 +121,65 @@ pub type RpMax7219<'a> =
     MAX7219<max7219::connectors::PinConnector<Output<'a>, Output<'a>, Output<'a>>>;
 pub type RpI2C0Async = I2c<'static, I2C0, i2c::Async>;
 
+pub struct MultiLed<'a> {
+    ok: Output<'a>,
+    caution: Output<'a>,
+    danger: Output<'a>,
+}
+
+impl<'a> MultiLed<'a> {
+    pub fn new(
+        ok: Peri<'a, impl Pin>,
+        caution: Peri<'a, impl Pin>,
+        danger: Peri<'a, impl Pin>,
+    ) -> Self {
+        Self {
+            ok: Output::new(ok, Level::Low),
+            caution: Output::new(caution, Level::Low),
+            danger: Output::new(danger, Level::Low),
+        }
+    }
+
+    fn update(&mut self, safety_defs: &SafetyDefinitions, temperature: f32, humidity: u8) {
+        self.ok.set_low();
+        self.caution.set_low();
+        self.danger.set_low();
+
+        let led = match safety_defs.safety_of(temperature, humidity) {
+            Safety::Ok => &mut self.ok,
+            Safety::Caution => &mut self.caution,
+            Safety::Danger => &mut self.danger,
+        };
+
+        led.set_high();
+    }
+}
+
+pub struct Sensors {
+    pub humidity: Sht4x,
+    pub temp: Sts4x,
+    pub air: Sen5x,
+}
+
 #[embassy_executor::task]
 pub async fn data_collector(
     mut i2c: RpI2C0Async,
-    humid: Sht4x,
-    temp: Sts4x,
-    air: Sen5x,
+    sensors: Sensors,
     mut displays: Option<RpMax7219<'static>>,
+    mut leds: MultiLed<'static>,
     client: &'static HttpClientMutex,
     global_data: &'static GlobalSensorDataMutex,
+    safety_defs: SafetyDefinitions,
 ) -> ! {
     const COLLECTION_INTERVAL: Duration = Duration::from_secs(60);
     const SUCCESSIVE_SUBMIT_FAIL_LIMIT: u32 = 5;
     let mut submit_fails = 0;
+
+    let Sensors {
+        humidity,
+        temp,
+        air,
+    } = sensors;
 
     let mut do_everything = async || {
         if submit_fails > SUCCESSIVE_SUBMIT_FAIL_LIMIT {
@@ -144,7 +190,7 @@ pub async fn data_collector(
         }
 
         info!("collecting");
-        let data = collect(&mut i2c, humid, temp, air).await;
+        let data = collect(&mut i2c, humidity, temp, air).await;
         info!("got data: {:?}", data);
         {
             let global_data = &mut *global_data.lock().await;
@@ -158,6 +204,10 @@ pub async fn data_collector(
         }
         if let Some(ref mut displays) = displays {
             show_data(&data, displays);
+        }
+
+        if let (Some(temperature), Some(humidity)) = (data.air_temp, data.humidity) {
+            leds.update(&safety_defs, temperature, humidity);
         }
     };
 
