@@ -75,7 +75,7 @@ impl From<miniserde::Error> for ParseError {
 }
 
 impl From<()> for ParseError {
-    fn from(_: ()) -> Self {
+    fn from((): ()) -> Self {
         Self::Format("unexpected value")
     }
 }

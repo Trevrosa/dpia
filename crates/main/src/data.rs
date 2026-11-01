@@ -12,7 +12,7 @@ use heapless::{String, index_map::FnvIndexMap};
 use miniserde::Deserialize;
 use reqwless::request::{Method, RequestBuilder};
 
-use crate::tasks::{RpI2C0Async, RpMax7219};
+use crate::tasks::{MultiLed, RpI2C0Async, RpMax7219};
 
 // FIXME: could use <https://crates.io/crates/ufmt>
 
@@ -144,7 +144,14 @@ impl SafetyDefinitions {
     clippy::missing_panics_doc,
     reason = "panics only come from .expect()s"
 )]
-pub fn show_data(data: &SensorData, displays: &mut RpMax7219<'static>) {
+pub fn show_data(
+    data: &SensorData,
+    displays: &mut RpMax7219<'static>,
+    safety_defs: &SafetyDefinitions,
+    leds: &mut MultiLed,
+) {
+    leds.update(safety_defs, data.air_temp, data.humidity);
+
     let len = if let Some(air_temp) = data.air_temp {
         let (air_temp, dots, len) = fmt_f32(air_temp);
         let air_temp = air_temp.as_bytes().try_into().expect("we set it to len 8");

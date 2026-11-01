@@ -140,10 +140,20 @@ impl<'a> MultiLed<'a> {
         }
     }
 
-    fn update(&mut self, safety_defs: &SafetyDefinitions, temperature: f32, humidity: u8) {
+    pub fn update(
+        &mut self,
+        safety_defs: &SafetyDefinitions,
+        temperature: Option<f32>,
+        humidity: Option<u8>,
+    ) {
         self.ok.set_low();
         self.caution.set_low();
         self.danger.set_low();
+
+        let (Some(temperature), Some(humidity)) = (temperature, humidity) else {
+            warn!("[safety] temp/humidity unavailable");
+            return;
+        };
 
         let led = match safety_defs.safety_of(temperature, humidity) {
             Safety::Ok => &mut self.ok,
@@ -203,11 +213,7 @@ pub async fn data_collector(
             submit_fails = 0;
         }
         if let Some(ref mut displays) = displays {
-            show_data(&data, displays);
-        }
-
-        if let (Some(temperature), Some(humidity)) = (data.air_temp, data.humidity) {
-            leds.update(&safety_defs, temperature, humidity);
+            show_data(&data, displays, &safety_defs, &mut leds);
         }
     };
 
