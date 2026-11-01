@@ -151,10 +151,14 @@ impl Sen5x {
             )
             .await?;
 
-        let mut serial = [0; 32];
+        let mut out_serial = [0; 32];
+
+        // TODO: check codegen
+        let data = data.as_chunks::<3>().0;
+        let out = out_serial.as_chunks_mut::<2>().0.iter_mut();
 
         let crc = Crc::<u8>::new(&CRC_8_SENSIRON);
-        for (data, out) in data.chunks_exact(3).zip(serial.chunks_exact_mut(2)) {
+        for (data, out) in data.iter().zip(out) {
             let ascii = &data[0..=1];
             let sum = data[2];
             sum_check(&crc, ascii, sum, "ascii");
@@ -162,7 +166,7 @@ impl Sen5x {
             out.copy_from_slice(ascii);
         }
 
-        Ok(serial)
+        Ok(out_serial)
     }
 
     /// Resets the sensor.
