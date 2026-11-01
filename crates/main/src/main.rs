@@ -27,6 +27,7 @@ use embassy_rp::{
     pio::{self, Pio},
 };
 use embassy_sync::mutex::Mutex;
+use embassy_sync::once_lock::OnceLock;
 use embassy_time::{Duration, Instant, Timer};
 use embedded_alloc::LlffHeap;
 use reqwless::request::Method;
@@ -37,7 +38,7 @@ use dpia::HttpClientMutex;
 
 use crate::data::{SafetyDefinitions, SensorData};
 use crate::persistent::Data;
-use crate::tasks::cyw43;
+use crate::tasks::{WifiCredentials, cyw43};
 
 use defmt_rtt as _;
 extern crate alloc;
@@ -70,7 +71,22 @@ bind_interrupts!(struct Irqs {
     POWMAN_IRQ_TIMER => aon_timer::InterruptHandler;
 });
 
-pub type GlobalSensorDataMutex = Mutex<SpinlockRawMutex<1>, SensorData>;
+pub type SensorDataMutex = Mutex<SpinlockRawMutex<1>, SensorData>;
+
+pub struct BtData {
+    sensors: &'static mut SensorDataMutex,
+    wifi: &'static mut OnceLock<WifiCredentials>,
+}
+
+impl Default for BtData {
+    fn default() -> Self {
+        static SENSORS: StaticCell<SensorDataMutex> = StaticCell::new();
+        let sensors = SENSORS.init(Mutex::new(SensorData::default()));
+        static WIFI: StaticCell<OnceLock<WifiCredentials>> = StaticCell::new();
+        let wifi = WIFI.init(OnceLock::new());
+        Self { sensors, wifi }
+    }
+}
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) -> ! {
@@ -148,8 +164,7 @@ async fn main(spawner: Spawner) -> ! {
     info!("cyw43 device set up");
 
     // required for bluetooth to have data
-    static GLOBAL_SENSOR_DATA: StaticCell<GlobalSensorDataMutex> = StaticCell::new();
-    let global_sensor_data = GLOBAL_SENSOR_DATA.init(Mutex::new(SensorData::default()));
+    let bt_data = BtData::default();
 
     // BLUETOOTH
     // TODO: onboarding with bluetooth to put wifi and password
@@ -161,14 +176,20 @@ async fn main(spawner: Spawner) -> ! {
         info!("starting bluetooth controller");
         let bt_control: ExternalController<BtDriver, 10> = ExternalController::new(bt_dev);
         let address = control.address().await;
-        spawner.spawn(unwrap!(tasks::ble(bt_control, address, global_sensor_data)));
-    }
+        spawner.spawn(unwrap!(tasks::ble(
+            bt_control,
+            address,
+            bt_data.sensors,
+            bt_data.wifi
+        )));
+    };
 
     // WIFI
     #[cfg(feature = "wifi")]
     let client = {
         use core::str::FromStr;
         use cyw43::{JoinOptions, ScanOptions};
+        use embassy_futures::select::{Either, select};
         use embassy_net::{
             DhcpConfig, StackResources,
             dns::DnsSocket,
@@ -178,8 +199,14 @@ async fn main(spawner: Spawner) -> ! {
 
         info!("scanning for wifi networks");
 
-        let wanted_ssid = include_str!("../config/wanted_ssid").trim();
-        let ssid_pass = include_str!("../config/ssid_pass").trim();
+        let wifi = select(bt_data.wifi.get(), Timer::after_secs(60 * 5)).await;
+        let (wanted_ssid, ssid_pass) = match wifi {
+            Either::First(w) => w.as_strs(),
+            Either::Second(()) => (
+                include_str!("../config/wanted_ssid").trim(),
+                include_str!("../config/ssid_pass").trim(),
+            ),
+        };
 
         {
             let mut scanner = control.scan(ScanOptions::default()).await;
@@ -339,7 +366,7 @@ async fn main(spawner: Spawner) -> ! {
             displays,
             leds,
             client,
-            global_sensor_data,
+            bt_data.sensors,
             safety_defs
         )));
     }

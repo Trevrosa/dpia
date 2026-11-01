@@ -12,12 +12,13 @@ use embassy_rp::{
     peripherals::{DMA_CH1, I2C0, PIN_13, PIO0, POWMAN, UART0},
     uart,
 };
+use embassy_sync::once_lock::OnceLock;
 use embassy_time::{Duration, Instant, Timer};
 use heapless::String;
 use max7219::MAX7219;
 
 use crate::{
-    GlobalSensorDataMutex, Irqs,
+    Irqs, SensorDataMutex,
     data::{Safety, SafetyDefinitions, collect, show_data, submit},
 };
 
@@ -178,7 +179,7 @@ pub async fn data_collector(
     mut displays: Option<RpMax7219<'static>>,
     mut leds: MultiLed<'static>,
     client: &'static HttpClientMutex,
-    global_data: &'static GlobalSensorDataMutex,
+    global_data: &'static SensorDataMutex,
     safety_defs: SafetyDefinitions,
 ) -> ! {
     const COLLECTION_INTERVAL: Duration = Duration::from_secs(60);
@@ -230,12 +231,26 @@ use cyw43::bluetooth::BtDriver;
 #[cfg(feature = "bt")]
 use trouble_host::prelude::ExternalController;
 
+#[derive(defmt::Format)]
+pub struct WifiCredentials {
+    pub ssid: String<64>,
+    pub pass: String<64>,
+}
+
+impl WifiCredentials {
+    /// Returns (ssid, pass) as `&str`s.
+    pub fn as_strs(&self) -> (&str, &str) {
+        (self.ssid.as_str(), self.pass.as_str())
+    }
+}
+
 #[cfg(feature = "bt")]
 #[embassy_executor::task]
 pub async fn ble(
     controller: ExternalController<BtDriver<'static>, 10>,
     address: [u8; 6],
-    global: &'static GlobalSensorDataMutex,
+    global_data: &'static SensorDataMutex,
+    wifi: &'static OnceLock<WifiCredentials>,
 ) {
     use crate::bt;
     use embassy_futures::join::join;
@@ -265,7 +280,7 @@ pub async fn ble(
 
     join(
         crate::bt::ble_task(stack.runner),
-        crate::bt::server_loop(stack.peripheral, &server, global),
+        crate::bt::server_loop(stack.peripheral, &server, global_data, wifi),
     )
     .await;
 }
